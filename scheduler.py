@@ -1,4 +1,3 @@
-    
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -23,7 +22,7 @@ class Task:
         self.include_every_day = include_every_day
         self.priority_score = (self.urgency * 2) + self.importance
 
-# --- 2. The "Brain" - Scheduler Class v3.2 ---
+# --- 2. The "Brain" - Scheduler Class v3.3 ---
 
 class Scheduler:
     def __init__(self, start_date, num_days, scheduled_events, tasks, energy_levels):
@@ -45,7 +44,7 @@ class Scheduler:
     def _create_task_chunks(self, tasks):
         chunked_list = []
         for task in tasks:
-            num_chunks = math.ceil(task.total_hours * 2) # e.g., 1.5 hours = 3 chunks
+            num_chunks = math.ceil(task.total_hours * 2)
             for _ in range(num_chunks):
                 chunked_list.append(copy.copy(task))
         return chunked_list
@@ -70,9 +69,15 @@ class Scheduler:
         
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
+            # Add recurring Dinner
             for slot_time in slots:
                 if time(18, 0) <= slot_time < time(19, 30):
                     slots[slot_time] = "FIXED: Dinner"
+            # Add recurring weekday Email
+            if day.weekday() < 5: # Monday to Friday
+                 for slot_time in slots:
+                    if time(10, 0) <= slot_time < time(10, 30):
+                        slots[slot_time] = "FIXED: Answering Email"
 
         for day, energy in self.energy_levels.items():
             if energy == "Low" and day not in all_day_events:
@@ -83,23 +88,17 @@ class Scheduler:
         # --- Pass 2: Place "Include Every Day" tasks ---
         daily_tasks = [task for task in self.tasks if task.include_every_day]
         for day, slots in self.schedule.items():
-            if day in all_day_events: continue
-            if not daily_tasks: break
+            if day in all_day_events or not daily_tasks: continue
             
             daily_task = daily_tasks[0]
-            chunks_needed_today = math.ceil(daily_task.total_hours * 2)
-            chunks_placed_today = 0
+            chunks_needed = math.ceil(daily_task.total_hours * 2)
             
-            sorted_slots = sorted(slots.keys())
-            for slot_time in sorted_slots:
-                if chunks_placed_today >= chunks_needed_today: break
-                
-                # Check for a contiguous 90-minute block
+            for slot_start_time in sorted(slots.keys()):
                 is_block_free = True
                 block_times = []
-                for i in range(chunks_needed_today):
-                    current_slot_time = (datetime.combine(day, slot_time) + timedelta(minutes=30 * i)).time()
-                    if current_slot_time not in slots or slots.get(current_slot_time) is not None:
+                for i in range(chunks_needed):
+                    current_slot_time = (datetime.combine(day, slot_start_time) + timedelta(minutes=30 * i)).time()
+                    if slots.get(current_slot_time) is not None:
                         is_block_free = False
                         break
                     block_times.append(current_slot_time)
@@ -107,7 +106,7 @@ class Scheduler:
                 if is_block_free:
                     for t in block_times:
                         slots[t] = f"TASK: {daily_task.name}"
-                    chunks_placed_today = chunks_needed_today # Mark as done for the day
+                    break # Placed for the day, move to next day
                     
         # --- Pass 3: Schedule remaining flexible tasks ---
         regular_tasks = [task for task in self.tasks if not task.include_every_day]
@@ -117,16 +116,13 @@ class Scheduler:
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
             
-            sorted_slots = sorted(slots.keys())
-            for i, slot_time in enumerate(sorted_slots):
+            for slot_time in sorted(slots.keys()):
                 if not sorted_chunks: break
-
                 if slots[slot_time] is None:
                     chunk_to_schedule = sorted_chunks.pop(0)
                     slots[slot_time] = f"TASK: {chunk_to_schedule.name}"
 
-
-        # --- Pass 4: Fill any remaining empty slots with advisory tasks ---
+        # --- Pass 4: Fill any remaining empty slots ---
         advisory_tasks = sorted([task for task in self.tasks], key=lambda x: x.priority_score, reverse=True)
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
@@ -168,19 +164,27 @@ if __name__ == "__main__":
         Task("Wine shopping?", "Hobby", 3, 4),
     ]
     
+    # --- SIMULATING "FLOW MODE" ---
+    # To simulate the user pressing the "Flow Mode" button for the Activity Advisor task,
+    # we find the task and temporarily boost its urgency before running the scheduler.
+    for task in user_tasks:
+        if "Activity Advisor" in task.name:
+            task.urgency = 9 # Boost from 6 to 9
+            task.priority_score = (task.urgency * 2) + task.importance # Recalculate score
+            print(f"--- FLOW MODE ACTIVATED for '{task.name}' (New Score: {task.priority_score}) ---")
+
     user_energy_levels = {date(2025, 8, 21): "Low"}
 
     my_scheduler = Scheduler(start_date, 7, user_events, user_tasks, user_energy_levels)
     final_schedule = my_scheduler.generate_schedule()
 
-    print("--- Your AI-Generated Daily Schedule (v3.2) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v3.3 with Flow Mode) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots:
             print(slots["All Day"])
             continue
         
-        # Consolidate display for readability
         sorted_times = sorted(slots.keys())
         i = 0
         while i < len(sorted_times):
@@ -196,5 +200,3 @@ if __name__ == "__main__":
             
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
-
-  
