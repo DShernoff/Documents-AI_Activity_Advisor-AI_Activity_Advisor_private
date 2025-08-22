@@ -22,7 +22,7 @@ class Task:
         self.include_every_day = include_every_day
         self.priority_score = (self.urgency * 2) + self.importance
 
-# --- 2. The "Brain" - Scheduler Class v3.3 ---
+# --- 2. The "Brain" - Scheduler Class v3.4 ---
 
 class Scheduler:
     def __init__(self, start_date, num_days, scheduled_events, tasks, energy_levels):
@@ -74,7 +74,7 @@ class Scheduler:
                 if time(18, 0) <= slot_time < time(19, 30):
                     slots[slot_time] = "FIXED: Dinner"
             # Add recurring weekday Email
-            if day.weekday() < 5: # Monday to Friday
+            if day.weekday() < 5: # Monday(0) to Friday(4)
                  for slot_time in slots:
                     if time(10, 0) <= slot_time < time(10, 30):
                         slots[slot_time] = "FIXED: Answering Email"
@@ -106,7 +106,7 @@ class Scheduler:
                 if is_block_free:
                     for t in block_times:
                         slots[t] = f"TASK: {daily_task.name}"
-                    break # Placed for the day, move to next day
+                    break
                     
         # --- Pass 3: Schedule remaining flexible tasks ---
         regular_tasks = [task for task in self.tasks if not task.include_every_day]
@@ -164,13 +164,10 @@ if __name__ == "__main__":
         Task("Wine shopping?", "Hobby", 3, 4),
     ]
     
-    # --- SIMULATING "FLOW MODE" ---
-    # To simulate the user pressing the "Flow Mode" button for the Activity Advisor task,
-    # we find the task and temporarily boost its urgency before running the scheduler.
     for task in user_tasks:
         if "Activity Advisor" in task.name:
-            task.urgency = 9 # Boost from 6 to 9
-            task.priority_score = (task.urgency * 2) + task.importance # Recalculate score
+            task.urgency = 9
+            task.priority_score = (task.urgency * 2) + task.importance
             print(f"--- FLOW MODE ACTIVATED for '{task.name}' (New Score: {task.priority_score}) ---")
 
     user_energy_levels = {date(2025, 8, 21): "Low"}
@@ -178,7 +175,7 @@ if __name__ == "__main__":
     my_scheduler = Scheduler(start_date, 7, user_events, user_tasks, user_energy_levels)
     final_schedule = my_scheduler.generate_schedule()
 
-    print("\n--- Your AI-Generated Daily Schedule (v3.3 with Flow Mode) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v3.4) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots:
