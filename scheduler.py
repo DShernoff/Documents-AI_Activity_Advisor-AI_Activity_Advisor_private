@@ -20,7 +20,7 @@ class Task:
         self.importance = importance
         self.total_hours = total_hours
         self.priority_score = (self.urgency * 2) + self.importance
-        self.status = 'active' # New property for tracking completion
+        self.status = 'active'
 
 class Routine:
     def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0):
@@ -28,16 +28,17 @@ class Routine:
         self.days_of_week = days_of_week
         self.start_time = start_time
         self.end_time = end_time
+        self.total_hours = total_hours
         self.is_flexible = (start_time is None)
 
-# --- 2. The "Brain" - Scheduler Class v4.3 ---
+# --- 2. The "Brain" - Scheduler Class v4.5 (Corrected) ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels):
         self.start_datetime = datetime.combine(start_date, start_time)
         self.num_days = num_days
         self.scheduled_events = scheduled_events
-        self.all_tasks = tasks # Store all tasks for the log
+        self.all_tasks = tasks
         self.active_tasks = [t for t in tasks if t.status == 'active']
         self.routines = routines
         self.energy_levels = energy_levels
@@ -47,7 +48,7 @@ class Scheduler:
     def _create_time_slots(self, day):
         slots = {}
         start_of_day = datetime.combine(day, time(8, 0))
-        for i in range(24):
+        for i in range(26):
             slot_time = (start_of_day + timedelta(minutes=30 * i)).time()
             slots[slot_time] = None
         return slots
@@ -151,7 +152,7 @@ class Scheduler:
             if day in all_day_events: continue
             for slot_time in slots:
                 if slots[slot_time] is None:
-                    if advisory_tasks: # Check if there are any tasks left
+                    if advisory_tasks:
                         slots[slot_time] = f"ADVISORY: {advisory_tasks[0].category} work"
                     else:
                         slots[slot_time] = "Open / Free Time"
@@ -179,7 +180,6 @@ if __name__ == "__main__":
         Routine("Exercise", [0,1,2,3,4,5,6], total_hours=1.5),
     ]
 
-    # The full task list, including completed items for the log
     all_user_tasks = [
         # Assignments
         Task("Pack", "Assignment", 10, 5, total_hours=1.5),
@@ -206,6 +206,7 @@ if __name__ == "__main__":
         Task("Get back to Cameron", "Long-term project", 6, 7),
         Task("Follow up with Erik on Summer Science", "Long-term project", 6, 7),
         Task("Review AI overview from call", "Long-term project", 6, 7),
+        Task("Black face watch battery", "Long-term project", 6, 7),
         # Values
         Task("Call Dad (help with form?)", "Value", 2, 8),
         # Hobbies
@@ -213,12 +214,11 @@ if __name__ == "__main__":
         Task("Wine shopping?", "Hobby", 3, 4),
     ]
     
-    # Simulate crossing off tasks
+    completed_tasks = ["Pack", "Help Spencer to prepare", "Scanner is offline", "Compare rental car reservations", "Colleen Costigan letter (ai it?)"]
     for task in all_user_tasks:
-        if task.name in ["Pack", "Help Spencer to prepare", "Scanner is offline", "Compare rental car reservations", "Colleen Costigan letter (ai it?)"]:
+        if task.name in completed_tasks:
             task.status = 'completed'
 
-    # Apply priority overrides to the remaining active tasks
     for task in all_user_tasks:
         if task.status == 'active':
             if "Activity Advisor" in task.name:
@@ -229,6 +229,33 @@ if __name__ == "__main__":
     my_scheduler = Scheduler(start_date, start_time, 8, user_events, all_user_tasks, user_routines, {})
     final_schedule = my_scheduler.generate_schedule()
 
-    # (Display Logic)
-    print("\n--- Your AI-Generated Daily Schedule (v4.3) ---")
-    # ... display logic here ...
+    # --- CORRECTED AND RESTORED DISPLAY LOGIC ---
+    print("\n--- Your AI-Generated Daily Schedule (v4.5.1 Corrected) ---")
+    for day, slots in final_schedule.items():
+        print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
+        if "All Day" in slots:
+            print(slots["All Day"])
+            continue
+        
+        sorted_times = sorted(slots.keys())
+        i = 0
+        while i < len(sorted_times):
+            start_time = sorted_times[i]
+            activity = slots[start_time]
+            # Skip PAST slots
+            if activity == "PAST":
+                i += 1
+                continue
+
+            j = i
+            # Consolidate identical, consecutive activities
+            while j + 1 < len(sorted_times) and slots.get(sorted_times[j+1]) == activity:
+                j += 1
+            
+            end_time = (datetime.combine(date.today(), sorted_times[j]) + timedelta(minutes=30)).time()
+            
+            start_str = start_time.strftime('%I:%M %p')
+            end_str = end_time.strftime('%I:%M %p')
+            
+            print(f"{start_str} - {end_str}: {activity}")
+            i = j + 1
