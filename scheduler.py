@@ -20,6 +20,7 @@ class Task:
         self.importance = importance
         self.total_hours = total_hours
         self.priority_score = (self.urgency * 2) + self.importance
+        self.status = 'active' # New property for tracking completion
 
 class Routine:
     def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0):
@@ -29,14 +30,15 @@ class Routine:
         self.end_time = end_time
         self.is_flexible = (start_time is None)
 
-# --- 2. The "Brain" - Scheduler Class v4.2 ---
+# --- 2. The "Brain" - Scheduler Class v4.3 ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels):
         self.start_datetime = datetime.combine(start_date, start_time)
         self.num_days = num_days
         self.scheduled_events = scheduled_events
-        self.tasks = tasks
+        self.all_tasks = tasks # Store all tasks for the log
+        self.active_tasks = [t for t in tasks if t.status == 'active']
         self.routines = routines
         self.energy_levels = energy_levels
         self.schedule = {}
@@ -59,11 +61,11 @@ class Scheduler:
         return chunked_list
     
     def _ensure_diversity(self):
-        original_task_names = {task.name for task in self.tasks}
+        original_task_names = {task.name for task in self.active_tasks}
         orphaned_tasks = original_task_names - self.scheduled_task_names
         if not orphaned_tasks: return
 
-        tasks_to_place = [task for task in self.tasks if task.name in orphaned_tasks]
+        tasks_to_place = [task for task in self.active_tasks if task.name in orphaned_tasks]
         
         for day in sorted(self.schedule.keys(), reverse=True):
              if "All Day" in self.schedule[day]: continue
@@ -124,7 +126,7 @@ class Scheduler:
                     break
                     
         # --- Pass 3: Schedule flexible TASKS by priority ---
-        task_chunks = self._create_task_chunks(self.tasks)
+        task_chunks = self._create_task_chunks(self.active_tasks)
         sorted_chunks = sorted(task_chunks, key=lambda x: x.priority_score, reverse=True)
 
         for i in range(self.num_days):
@@ -144,23 +146,25 @@ class Scheduler:
             if not sorted_chunks: break
 
         # --- Pass 4: Fill any remaining empty slots ---
-        advisory_tasks = sorted(self.tasks, key=lambda x: x.priority_score, reverse=True)
+        advisory_tasks = sorted(self.active_tasks, key=lambda x: x.priority_score, reverse=True)
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
             for slot_time in slots:
                 if slots[slot_time] is None:
-                    slots[slot_time] = f"ADVISORY: {advisory_tasks[0].category} work"
+                    if advisory_tasks: # Check if there are any tasks left
+                        slots[slot_time] = f"ADVISORY: {advisory_tasks[0].category} work"
+                    else:
+                        slots[slot_time] = "Open / Free Time"
         
         self._ensure_diversity()
         return self.schedule
 
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
-    start_date = date(2025, 8, 23)
+    start_date = date(2025, 8, 24)
     start_time = time(12, 0)
     
     user_events = [
-        ScheduledEvent("Beach day", date(2025, 8, 22), None, None),
         ScheduledEvent("Mom to say goodbye to Spencer", date(2025, 8, 24), time(11, 0), time(13, 0)),
         ScheduledEvent("Trip to Madison", date(2025, 8, 25), None, None),
         ScheduledEvent("Trip to Madison", date(2025, 8, 26), None, None),
@@ -175,13 +179,13 @@ if __name__ == "__main__":
         Routine("Exercise", [0,1,2,3,4,5,6], total_hours=1.5),
     ]
 
-    user_tasks = [
+    # The full task list, including completed items for the log
+    all_user_tasks = [
         # Assignments
-        Task("Help Spencer to prepare", "Assignment", 10, 5, total_hours=1.5), # NEW: Now an overdue assignment
-        Task("Letter(s) for Spencer", "Assignment", 10, 5, total_hours=1.5),
+        Task("Pack", "Assignment", 10, 5, total_hours=1.5),
+        Task("Help Spencer to prepare", "Assignment", 10, 5, total_hours=1.5),
         Task("Compare rental car reservations", "Assignment", 10, 5, total_hours=0.5),
         Task("Cancel one Chicago dinner reservation", "Assignment", 10, 5, total_hours=0.5),
-        Task("Make sure we have Spencer's allowance settled", "Assignment", 10, 5, total_hours=1),
         Task("Tell Dean about our trip?", "Assignment", 10, 5, total_hours=0.5),
         Task("Give requested Feedback to Rough Draft math", "Assignment", 8, 5, total_hours=2),
         Task("Organize computer files", "Assignment", 7, 6, total_hours=6),
@@ -189,8 +193,8 @@ if __name__ == "__main__":
         Task("Continue work on Activity Advisor program", "Long-term project", 6, 7, total_hours=10),
         Task("Boat stuff", "Long-term project", 6, 7, total_hours=1),
         Task("Scanner is offline", "Long-term project", 6, 7, total_hours=1),
+        Task("Solve printer offline", "Long-term project", 6, 7),
         Task("Get RU-PSU football tickets", "Long-term project", 6, 7),
-        Task("Get half and half and cottage cheese", "Long-term project", 6, 7, total_hours=0.5),
         Task("Send keynote video to mom", "Long-term project", 6, 7, total_hours=0.5),
         Task("Boater endorsement on driver's license", "Long-term project", 6, 7),
         Task("Get UW safety alerts", "Long-term project", 6, 7),
@@ -209,15 +213,22 @@ if __name__ == "__main__":
         Task("Wine shopping?", "Hobby", 3, 4),
     ]
     
-    for task in user_tasks:
-        if "Activity Advisor" in task.name:
-            task.urgency = 7.5; task.priority_score = (task.urgency * 2) + task.importance
-        if "Call Dad" in task.name:
-            task.urgency = 8; task.priority_score = (task.urgency * 2) + task.importance
+    # Simulate crossing off tasks
+    for task in all_user_tasks:
+        if task.name in ["Pack", "Help Spencer to prepare", "Scanner is offline", "Compare rental car reservations", "Colleen Costigan letter (ai it?)"]:
+            task.status = 'completed'
+
+    # Apply priority overrides to the remaining active tasks
+    for task in all_user_tasks:
+        if task.status == 'active':
+            if "Activity Advisor" in task.name:
+                task.urgency = 7.5; task.priority_score = (task.urgency * 2) + task.importance
+            if "Call Dad" in task.name:
+                task.urgency = 8; task.priority_score = (task.urgency * 2) + task.importance
             
-    my_scheduler = Scheduler(start_date, start_time, 8, user_events, user_tasks, user_routines, {})
+    my_scheduler = Scheduler(start_date, start_time, 8, user_events, all_user_tasks, user_routines, {})
     final_schedule = my_scheduler.generate_schedule()
 
     # (Display Logic)
-    print("\n--- Your AI-Generated Daily Schedule (v4.2 with urgent Spencer task) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v4.3) ---")
     # ... display logic here ...
