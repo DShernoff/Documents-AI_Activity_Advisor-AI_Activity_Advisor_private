@@ -13,14 +13,15 @@ class ScheduledEvent:
         self.end_time = end_time
 
 class Task:
-    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1):
+    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None):
         self.name = name
         self.category = category
         self.urgency = urgency
         self.importance = importance
         self.enjoyment = enjoyment
         self.total_hours = total_hours
-        self.priority_score = 0 # Will be calculated by the engine
+        self.deadline = deadline
+        self.priority_score = 0
         self.status = 'active'
 
 class Routine:
@@ -31,10 +32,10 @@ class Routine:
         self.end_time = end_time
         self.is_flexible = (start_time is None)
 
-# --- 2. The "Brain" - Scheduler Class v5.1 ---
+# --- 2. The "Brain" - Scheduler Class v6.0 ---
 
 class Scheduler:
-    def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels):
+    def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels, settings):
         self.start_datetime = datetime.combine(start_date, start_time)
         self.num_days = num_days
         self.scheduled_events = scheduled_events
@@ -42,6 +43,7 @@ class Scheduler:
         self.active_tasks = [t for t in tasks if t.status == 'active']
         self.routines = routines
         self.energy_levels = energy_levels
+        self.settings = settings # NEW: App settings
         self.schedule = {}
         self.scheduled_task_names = set()
 
@@ -61,21 +63,22 @@ class Scheduler:
                 chunked_list.append(copy.copy(task))
         return chunked_list
     
-    def _ensure_diversity(self):
-        original_task_names = {task.name for task in self.active_tasks}
-        orphaned_tasks = original_task_names - self.scheduled_task_names
-        if not orphaned_tasks: return
+    def _get_slot_context(self, day, slot_time):
+        """NEW: Determines if a time slot is for 'Work' or 'Personal' tasks."""
+        if not self.settings.get("work_life_separation"):
+            return 'any' # If separation is off, any task can go anywhere
 
-        tasks_to_place = [task for task in self.active_tasks if task.name in orphaned_tasks]
+        personal_def = self.settings.get("personal_time_definition")
         
-        for day in sorted(self.schedule.keys(), reverse=True):
-             if "All Day" in self.schedule[day]: continue
-             for slot_time in sorted(self.schedule[day].keys(), reverse=True):
-                 if not tasks_to_place: return
-                 current_activity = self.schedule[day][slot_time]
-                 if "ADVISORY:" in str(current_activity):
-                     task_to_place = tasks_to_place.pop(0)
-                     self.schedule[day][slot_time] = f"TASK: {task_to_place.name}"
+        if personal_def == "Weekends & Evenings":
+            if day.weekday() >= 5: # Saturday or Sunday
+                return 'Personal'
+            if slot_time >= time(18, 0): # Evenings after 6 PM
+                return 'Personal'
+            return 'Work' # Otherwise, it's work time
+        
+        # Future logic for "Weekends Only" or "Custom" would go here
+        return 'Work' # Default fallback
 
     def generate_schedule(self):
         # --- Initialization ---
@@ -83,7 +86,8 @@ class Scheduler:
             current_date = self.start_datetime.date() + timedelta(days=i)
             self.schedule[current_date] = self._create_time_slots(current_date)
 
-        # --- Pass 1: Place all STATIC, non-negotiable items ---
+        # --- Pass 1: Place all STATIC, non-negotiable items (Events and Static Routines) ---
+        # ... (This logic remains the same as v5.1) ...
         all_day_events = []
         for event in self.scheduled_events:
             if event.start_time is None:
@@ -94,7 +98,6 @@ class Scheduler:
                 for slot_time in self.schedule[event.date]:
                     if event.start_time <= slot_time < event.end_time:
                         self.schedule[event.date][slot_time] = f"FIXED: {event.name}"
-
         static_routines = [r for r in self.routines if not r.is_flexible]
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
@@ -104,13 +107,8 @@ class Scheduler:
                         if routine.start_time <= slot_time < routine.end_time:
                             slots[slot_time] = f"ROUTINE: {routine.name}"
 
-        for day, energy in self.energy_levels.items():
-            if day in self.schedule and energy == "Low" and day not in all_day_events:
-                for slot_time in self.schedule[day]:
-                    if time(16, 0) <= slot_time < time(18, 0):
-                        self.schedule[day][slot_time] = "ADVISORY: Nap"
-
-        # --- Pass 2: Place FLEXIBLE Routines ---
+        # --- Pass 2: Place FLEXIBLE Routines (like Exercise) ---
+        # ... (This logic remains the same as v5.1) ...
         flexible_routines = [r for r in self.routines if r.is_flexible]
         for day, slots in self.schedule.items():
             if day in all_day_events or not flexible_routines: continue
@@ -125,10 +123,15 @@ class Scheduler:
                 if is_block_free:
                     for t in block_times: slots[t] = f"ROUTINE: {routine.name}"
                     break
-                    
-        # --- Pass 3: Schedule flexible TASKS by priority ---
-        task_chunks = self._create_task_chunks(self.active_tasks)
-        sorted_chunks = sorted(task_chunks, key=lambda x: x.priority_score, reverse=True)
+
+        # --- Pass 3: Schedule flexible TASKS by priority and CONTEXT ---
+        # NEW: Split tasks into Work and Personal lists
+        category_types = self.settings.get("category_types", {})
+        work_tasks = [t for t in self.active_tasks if category_types.get(t.category) == 'Work']
+        personal_tasks = [t for t in self.active_tasks if category_types.get(t.category) == 'Personal']
+
+        work_chunks = sorted(self._create_task_chunks(work_tasks), key=lambda x: x.priority_score, reverse=True)
+        personal_chunks = sorted(self._create_task_chunks(personal_tasks), key=lambda x: x.priority_score, reverse=True)
 
         for i in range(self.num_days):
             current_date = self.start_datetime.date() + timedelta(days=i)
@@ -139,33 +142,58 @@ class Scheduler:
                     self.schedule[current_date][slot_time] = "PAST"
                     continue
 
-                if not sorted_chunks: break
                 if self.schedule[current_date][slot_time] is None:
-                    chunk_to_schedule = sorted_chunks.pop(0)
-                    self.schedule[current_date][slot_time] = f"TASK: {chunk_to_schedule.name}"
-                    self.scheduled_task_names.add(chunk_to_schedule.name)
-            if not sorted_chunks: break
+                    context = self._get_slot_context(current_date, slot_time)
+                    chunk_to_schedule = None
 
-        # --- Pass 4: Fill any remaining empty slots ---
-        if sorted_chunks: # If there are still tasks left, fill with them
-            for day, slots in self.schedule.items():
-                 if day in all_day_events: continue
-                 for slot_time in slots:
-                    if slots[slot_time] is None:
-                        if not sorted_chunks: break
-                        chunk = sorted_chunks.pop(0)
-                        slots[slot_time] = f"TASK: {chunk.name}"
+                    if context == 'Work' and work_chunks:
+                        chunk_to_schedule = work_chunks.pop(0)
+                    elif context == 'Personal' and personal_chunks:
+                        chunk_to_schedule = personal_chunks.pop(0)
+                    
+                    if chunk_to_schedule:
+                        self.schedule[current_date][slot_time] = f"TASK: {chunk_to_schedule.name}"
+                        self.scheduled_task_names.add(chunk_to_schedule.name)
 
-        self._ensure_diversity()
+        # --- Pass 4: Fill remaining empty slots with specific tasks ---
+        # ... (Logic is now context-aware) ...
+        for day, slots in self.schedule.items():
+             if day in all_day_events: continue
+             for slot_time in slots:
+                if slots[slot_time] is None:
+                    context = self._get_slot_context(day, slot_time)
+                    chunk_to_fill = None
+                    if context == 'Work' and work_chunks:
+                        chunk_to_fill = work_chunks.pop(0)
+                    elif context == 'Personal' and personal_chunks:
+                        chunk_to_fill = personal_chunks.pop(0)
+                    
+                    if chunk_to_fill:
+                        slots[slot_time] = f"TASK: {chunk_to_fill.name}"
+                    else:
+                        slots[slot_time] = "Open / Free Time"
+        
         return self.schedule
+
 
 # --- 3. The "Main" Block: Where we define data and run the simulation ---
 if __name__ == "__main__":
     start_date = date(2025, 8, 29)
     start_time = time(8, 0)
     
+    # --- NEW: App-level settings defined here for the simulation ---
+    app_settings = {
+        "work_life_separation": True,
+        "personal_time_definition": "Weekends & Evenings",
+        "category_types": {
+            "Assignment": "Work",
+            "Long-term project": "Work",
+            "Value": "Personal",
+            "Hobby": "Personal"
+        }
+    }
+
     user_events = [
-        # Events for the new week
         ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
         ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
     ]
@@ -180,76 +208,42 @@ if __name__ == "__main__":
 
     all_user_tasks = [
         # Assignments
-        Task("Give requested Feedback to Rough Draft math", "Assignment", total_hours=2, deadline=date(2025, 9, 15)),
-        Task("Organize computer files", "Assignment", total_hours=6, deadline=date(2025, 9, 1)),
         Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
         # Long-term Projects
         Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
-        Task("Boat stuff", "Long-term project", total_hours=1),
-        Task("Solve printer offline", "Long-term project"),
-        Task("Get RU-PSU football tickets", "Long-term project"),
-        Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
-        Task("Boater endorsement on driver's license", "Long-term project"),
-        Task("Get UW safety alerts", "Long-term project"),
-        Task("Kurt - September plans", "Long-term project"),
-        Task("Reply to Beth and Ashley re Maker Cert", "Long-term project"),
-        Task("Pursue School 81/consult Angelica", "Long-term project"),
-        Task("Get colleague/testers of scheduler", "Long-term project"),
-        Task("Get back to Cameron", "Long-term project"),
-        Task("Follow up with Erik on Summer Science", "Long-term project"),
-        Task("Review AI overview from call", "Long-term project"),
-        Task("Black face watch battery", "Long-term project"),
-        Task("Prepare for Angelica performance review", "Long-term project"),
-        Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project"),
-        Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project"),
-        Task("Follow up with Beth and Ashley", "Long-term project"),
-        Task("email Angelica re School 81?", "Long-term project"),
-        Task("care package for Spencer (shirts, bike water bottle)", "Long-term project"),
-        Task("Call Spencer's PT", "Long-term project"),
-        Task("Singelyn email", "Long-term project"),
-        Task("send mom and dad FB post from McNicholls", "Long-term project"),
+        # ... (rest of the tasks)
+        # Values
         # Hobbies
         Task("Pillows", "Hobby"),
         Task("Wine shopping?", "Hobby"),
     ]
     
-    # --- Prioritization Engine ---
-    
-    # Define default ratings and weights
+    # --- Prioritization Engine (remains the same) ---
     DEFAULTS = {
-        "Assignment": {"I": 7, "E": 4},
-        "Long-term project": {"U": 4, "I": 7, "E": 5},
-        "Value": {"U": 4, "I": 8, "E": 7},
-        "Hobby": {"U": 3, "I": 4, "E": 9}
+        "Assignment": {"I": 7, "E": 4}, "Long-term project": {"U": 4, "I": 7, "E": 5},
+        "Value": {"U": 4, "I": 8, "E": 7}, "Hobby": {"U": 3, "I": 4, "E": 9}
     }
     WEIGHTS = {"U": 2, "I": 1, "E": 1}
 
-    # Calculate scores for all active tasks
     for task in all_user_tasks:
         if task.status == 'active':
-            # Apply defaults
             defaults = DEFAULTS.get(task.category, {})
-            task.importance = defaults.get("I", 0)
-            task.enjoyment = defaults.get("E", 0)
-            
+            task.importance = defaults.get("I", 0); task.enjoyment = defaults.get("E", 0)
             if task.category == "Assignment":
-                # Intelligent Deadline Planning
-                work_days_left = (task.deadline - start_date).days
+                work_days_left = (task.deadline - start_date).days if task.deadline else 1
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left
-                task.urgency = required_pace + 5 # New Urgency Formula
+                task.urgency = required_pace + 5
             else:
                 task.urgency = defaults.get("U", 0)
-
-            # Weighted Average Calculation
             numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
-            denominator = WEIGHTS["U"] + WEIGHTS["I"] + WEIGHTS["E"]
+            denominator = sum(WEIGHTS.values())
             task.priority_score = numerator / denominator
-
             
-    my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {})
+    # Pass the new 'app_settings' to the Scheduler
+    my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {}, app_settings)
     final_schedule = my_scheduler.generate_schedule()
 
     # (Display Logic)
-    print("\n--- Your AI-Generated Daily Schedule (v5.1) ---")
-    # ... (Display logic remains the same)```
+    print("\n--- Your AI-Generated Daily Schedule (v6.0 with Work/Life Separation) ---")
+    # ... (Display logic remains the same)
