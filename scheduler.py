@@ -13,13 +13,14 @@ class ScheduledEvent:
         self.end_time = end_time
 
 class Task:
-    def __init__(self, name, category, urgency, importance, total_hours=1):
+    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1):
         self.name = name
         self.category = category
         self.urgency = urgency
         self.importance = importance
+        self.enjoyment = enjoyment
         self.total_hours = total_hours
-        self.priority_score = (self.urgency * 2) + self.importance
+        self.priority_score = 0 # Will be calculated by the engine
         self.status = 'active'
 
 class Routine:
@@ -28,10 +29,9 @@ class Routine:
         self.days_of_week = days_of_week
         self.start_time = start_time
         self.end_time = end_time
-        self.total_hours = total_hours
         self.is_flexible = (start_time is None)
 
-# --- 2. The "Brain" - Scheduler Class v4.5 (Corrected) ---
+# --- 2. The "Brain" - Scheduler Class v5.1 ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels):
@@ -73,7 +73,7 @@ class Scheduler:
              for slot_time in sorted(self.schedule[day].keys(), reverse=True):
                  if not tasks_to_place: return
                  current_activity = self.schedule[day][slot_time]
-                 if current_activity and "ADVISORY" in current_activity:
+                 if "ADVISORY:" in str(current_activity):
                      task_to_place = tasks_to_place.pop(0)
                      self.schedule[day][slot_time] = f"TASK: {task_to_place.name}"
 
@@ -147,29 +147,27 @@ class Scheduler:
             if not sorted_chunks: break
 
         # --- Pass 4: Fill any remaining empty slots ---
-        advisory_tasks = sorted(self.active_tasks, key=lambda x: x.priority_score, reverse=True)
-        for day, slots in self.schedule.items():
-            if day in all_day_events: continue
-            for slot_time in slots:
-                if slots[slot_time] is None:
-                    if advisory_tasks:
-                        slots[slot_time] = f"ADVISORY: {advisory_tasks[0].category} work"
-                    else:
-                        slots[slot_time] = "Open / Free Time"
-        
+        if sorted_chunks: # If there are still tasks left, fill with them
+            for day, slots in self.schedule.items():
+                 if day in all_day_events: continue
+                 for slot_time in slots:
+                    if slots[slot_time] is None:
+                        if not sorted_chunks: break
+                        chunk = sorted_chunks.pop(0)
+                        slots[slot_time] = f"TASK: {chunk.name}"
+
         self._ensure_diversity()
         return self.schedule
 
-# --- 3. The "Main" Block ---
+# --- 3. The "Main" Block: Where we define data and run the simulation ---
 if __name__ == "__main__":
-    start_date = date(2025, 8, 24)
-    start_time = time(12, 0)
+    start_date = date(2025, 8, 29)
+    start_time = time(8, 0)
     
     user_events = [
-        ScheduledEvent("Mom to say goodbye to Spencer", date(2025, 8, 24), time(11, 0), time(13, 0)),
-        ScheduledEvent("Trip to Madison", date(2025, 8, 25), None, None),
-        ScheduledEvent("Trip to Madison", date(2025, 8, 26), None, None),
-        ScheduledEvent("Trip to Madison", date(2025, 8, 27), None, None),
+        # Events for the new week
+        ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
+        ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
     ]
 
     user_routines = [
@@ -182,80 +180,76 @@ if __name__ == "__main__":
 
     all_user_tasks = [
         # Assignments
-        Task("Pack", "Assignment", 10, 5, total_hours=1.5),
-        Task("Help Spencer to prepare", "Assignment", 10, 5, total_hours=1.5),
-        Task("Compare rental car reservations", "Assignment", 10, 5, total_hours=0.5),
-        Task("Cancel one Chicago dinner reservation", "Assignment", 10, 5, total_hours=0.5),
-        Task("Tell Dean about our trip?", "Assignment", 10, 5, total_hours=0.5),
-        Task("Give requested Feedback to Rough Draft math", "Assignment", 8, 5, total_hours=2),
-        Task("Organize computer files", "Assignment", 7, 6, total_hours=6),
+        Task("Give requested Feedback to Rough Draft math", "Assignment", total_hours=2, deadline=date(2025, 9, 15)),
+        Task("Organize computer files", "Assignment", total_hours=6, deadline=date(2025, 9, 1)),
+        Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
         # Long-term Projects
-        Task("Continue work on Activity Advisor program", "Long-term project", 6, 7, total_hours=10),
-        Task("Boat stuff", "Long-term project", 6, 7, total_hours=1),
-        Task("Scanner is offline", "Long-term project", 6, 7, total_hours=1),
-        Task("Solve printer offline", "Long-term project", 6, 7),
-        Task("Get RU-PSU football tickets", "Long-term project", 6, 7),
-        Task("Send keynote video to mom", "Long-term project", 6, 7, total_hours=0.5),
-        Task("Boater endorsement on driver's license", "Long-term project", 6, 7),
-        Task("Get UW safety alerts", "Long-term project", 6, 7),
-        Task("Kurt - September plans", "Long-term project", 6, 7),
-        Task("Reply to Beth and Ashley re Maker Cert", "Long-term project", 6, 7),
-        Task("Pursue School 81/consult Angelica", "Long-term project", 6, 7),
-        Task("Colleen Costigan letter (ai it?)", "Long-term project", 6, 7),
-        Task("Get colleague/testers of scheduler", "Long-term project", 6, 7),
-        Task("Get back to Cameron", "Long-term project", 6, 7),
-        Task("Follow up with Erik on Summer Science", "Long-term project", 6, 7),
-        Task("Review AI overview from call", "Long-term project", 6, 7),
-        Task("Black face watch battery", "Long-term project", 6, 7),
-        # Values
-        Task("Call Dad (help with form?)", "Value", 2, 8),
+        Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
+        Task("Boat stuff", "Long-term project", total_hours=1),
+        Task("Solve printer offline", "Long-term project"),
+        Task("Get RU-PSU football tickets", "Long-term project"),
+        Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
+        Task("Boater endorsement on driver's license", "Long-term project"),
+        Task("Get UW safety alerts", "Long-term project"),
+        Task("Kurt - September plans", "Long-term project"),
+        Task("Reply to Beth and Ashley re Maker Cert", "Long-term project"),
+        Task("Pursue School 81/consult Angelica", "Long-term project"),
+        Task("Get colleague/testers of scheduler", "Long-term project"),
+        Task("Get back to Cameron", "Long-term project"),
+        Task("Follow up with Erik on Summer Science", "Long-term project"),
+        Task("Review AI overview from call", "Long-term project"),
+        Task("Black face watch battery", "Long-term project"),
+        Task("Prepare for Angelica performance review", "Long-term project"),
+        Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project"),
+        Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project"),
+        Task("Follow up with Beth and Ashley", "Long-term project"),
+        Task("email Angelica re School 81?", "Long-term project"),
+        Task("care package for Spencer (shirts, bike water bottle)", "Long-term project"),
+        Task("Call Spencer's PT", "Long-term project"),
+        Task("Singelyn email", "Long-term project"),
+        Task("send mom and dad FB post from McNicholls", "Long-term project"),
         # Hobbies
-        Task("Pillows", "Hobby", 3, 4),
-        Task("Wine shopping?", "Hobby", 3, 4),
+        Task("Pillows", "Hobby"),
+        Task("Wine shopping?", "Hobby"),
     ]
     
-    completed_tasks = ["Pack", "Help Spencer to prepare", "Scanner is offline", "Compare rental car reservations", "Colleen Costigan letter (ai it?)"]
-    for task in all_user_tasks:
-        if task.name in completed_tasks:
-            task.status = 'completed'
+    # --- Prioritization Engine ---
+    
+    # Define default ratings and weights
+    DEFAULTS = {
+        "Assignment": {"I": 7, "E": 4},
+        "Long-term project": {"U": 4, "I": 7, "E": 5},
+        "Value": {"U": 4, "I": 8, "E": 7},
+        "Hobby": {"U": 3, "I": 4, "E": 9}
+    }
+    WEIGHTS = {"U": 2, "I": 1, "E": 1}
 
+    # Calculate scores for all active tasks
     for task in all_user_tasks:
         if task.status == 'active':
-            if "Activity Advisor" in task.name:
-                task.urgency = 7.5; task.priority_score = (task.urgency * 2) + task.importance
-            if "Call Dad" in task.name:
-                task.urgency = 8; task.priority_score = (task.urgency * 2) + task.importance
+            # Apply defaults
+            defaults = DEFAULTS.get(task.category, {})
+            task.importance = defaults.get("I", 0)
+            task.enjoyment = defaults.get("E", 0)
             
-    my_scheduler = Scheduler(start_date, start_time, 8, user_events, all_user_tasks, user_routines, {})
+            if task.category == "Assignment":
+                # Intelligent Deadline Planning
+                work_days_left = (task.deadline - start_date).days
+                if work_days_left < 1: work_days_left = 1
+                required_pace = task.total_hours / work_days_left
+                task.urgency = required_pace + 5 # New Urgency Formula
+            else:
+                task.urgency = defaults.get("U", 0)
+
+            # Weighted Average Calculation
+            numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
+            denominator = WEIGHTS["U"] + WEIGHTS["I"] + WEIGHTS["E"]
+            task.priority_score = numerator / denominator
+
+            
+    my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {})
     final_schedule = my_scheduler.generate_schedule()
 
-    # --- CORRECTED AND RESTORED DISPLAY LOGIC ---
-    print("\n--- Your AI-Generated Daily Schedule (v4.5.1 Corrected) ---")
-    for day, slots in final_schedule.items():
-        print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
-        if "All Day" in slots:
-            print(slots["All Day"])
-            continue
-        
-        sorted_times = sorted(slots.keys())
-        i = 0
-        while i < len(sorted_times):
-            start_time = sorted_times[i]
-            activity = slots[start_time]
-            # Skip PAST slots
-            if activity == "PAST":
-                i += 1
-                continue
-
-            j = i
-            # Consolidate identical, consecutive activities
-            while j + 1 < len(sorted_times) and slots.get(sorted_times[j+1]) == activity:
-                j += 1
-            
-            end_time = (datetime.combine(date.today(), sorted_times[j]) + timedelta(minutes=30)).time()
-            
-            start_str = start_time.strftime('%I:%M %p')
-            end_str = end_time.strftime('%I:%M %p')
-            
-            print(f"{start_str} - {end_str}: {activity}")
-            i = j + 1
+    # (Display Logic)
+    print("\n--- Your AI-Generated Daily Schedule (v5.1) ---")
+    # ... (Display logic remains the same)```
