@@ -1,5 +1,4 @@
-
-### **The Corrected Python Script (v7.1.1)**```python
+### **The Stable and Corrected Python Script (v7.3.1)**```python
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -37,7 +36,7 @@ class Routine:
         self.total_hours = total_hours
         self.is_flexible = (start_time is None)
 
-# --- 2. The "Brain" - Scheduler Class v7.1 ---
+# --- 2. The "Brain" - Scheduler Class v7.3 (Stable) ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels, settings):
@@ -74,18 +73,14 @@ class Scheduler:
     
     def _pre_flight_check(self, day):
         if "All Day" in self.schedule.get(day, {}): return
-        
-        total_slots = len(self.schedule.get(day, {}))
+        total_slots = len(self.schedule.get(day, {}));
         if total_slots == 0: return
-        
         blocked_slots = len([s for s in self.schedule[day].values() if s is not None])
         available_hours = (total_slots - blocked_slots) / 2.0
-
         required_hours = 0
         for task in self.active_tasks:
             if task.is_for_today:
                 required_hours += getattr(task, 'today_hours', 1)
-        
         if required_hours > available_hours:
             print(f"\n--- SCHEDULING ALERT for {day.strftime('%A, %B %d')} ---")
             print(f"Warning: You have {required_hours} hours of tasks marked 'For Today' but only {available_hours} hours available.")
@@ -131,6 +126,9 @@ class Scheduler:
             for_today_tasks = [t for t in self.active_tasks if t.is_for_today]
             today_chunks = self._create_task_chunks(for_today_tasks, for_today_only=True)
             for chunk in today_chunks: chunk.priority_score = 99
+
+            # Sort today's chunks by their original priority before the override
+            today_chunks = sorted(today_chunks, key=lambda x: x.priority_score, reverse=True)
 
             for slot_time in sorted(self.schedule[today_date].keys()):
                 if not today_chunks: break
@@ -211,8 +209,13 @@ if __name__ == "__main__":
         ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
         ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
         ScheduledEvent("CMSCE Contract / MOU table meeting", date(2025, 9, 2), time(9, 30), time(10, 30)),
+        ScheduledEvent("Peer mentoring session", date(2025, 9, 9), time(9, 30), time(12, 30)),
+        ScheduledEvent("Call with Dad?", date(2025, 9, 9), time(14, 0), time(15, 0)),
+        ScheduledEvent("Division-wide meeting with Angelica (small presentation)", date(2025, 9, 16), time(14, 0), time(15, 30)),
+        ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
     ]
 
+    # --- METICULOUSLY CORRECTED ROUTINE DEFINITIONS ---
     user_routines = [
         Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
         Routine("Answering Email", [0,1,2,3,4], start_time=time(10,0), end_time=time(10,30)),
@@ -222,10 +225,37 @@ if __name__ == "__main__":
     ]
     
     all_user_tasks = [
+        # Assignments
         Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
+        # Long-term Projects
         Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
+        Task("Boat stuff", "Long-term project", total_hours=1),
+        Task("Solve printer offline", "Long-term project"),
+        Task("Get RU-PSU football tickets", "Long-term project"),
+        Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
+        Task("Boater endorsement on driver's license", "Long-term project"),
+        Task("Get UW safety alerts", "Long-term project"),
+        Task("Kurt - September plans", "Long-term project"),
+        Task("Reply to Beth and Ashley re Maker Cert", "Long-term project"),
+        Task("Pursue School 81/consult Angelica", "Long-term project"),
+        Task("Get colleague/testers of scheduler", "Long-term project"),
+        Task("Get back to Cameron", "Long-term project"),
+        Task("Follow up with Erik on Summer Science", "Long-term project"),
+        Task("Review AI overview from call", "Long-term project"),
+        Task("Black face watch battery", "Long-term project"),
+        Task("Prepare for Angelica performance review", "Long-term project"),
+        Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project"),
+        Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project"),
+        Task("Follow up with Beth and Ashley", "Long-term project"),
+        Task("email Angelica re School 81?", "Long-term project"),
+        Task("care package for Spencer (shirts, bike water bottle)", "Long-term project"),
+        Task("Call Spencer's PT", "Long-term project"),
+        Task("Singelyn email", "Long-term project"),
+        Task("send mom and dad FB post from McNicholls", "Long-term project"),
+        # Hobbies
         Task("Pillows", "Hobby"),
         Task("Wine shopping?", "Hobby"),
+        # "For Today" Tasks
         Task("Wine inventory", "Hobby", is_for_today=True, one_off_today=True, total_hours=1),
         Task("Watch battery", "Long-term project", is_for_today=True, one_off_today=True, total_hours=0.5),
         Task("Hatch plan with Ryan", "Long-term project", is_for_today=True, one_off_today=True, total_hours=1),
@@ -250,7 +280,8 @@ if __name__ == "__main__":
             defaults = DEFAULTS.get(task.category, {})
             task.importance = defaults.get("I", 0); task.enjoyment = defaults.get("E", 0)
             if task.category == "Assignment" and task.deadline:
-                work_days_left = (task.deadline - date.today()).days;
+                # Using the simulation start_date for deterministic results
+                work_days_left = (task.deadline - start_date).days
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left; task.urgency = required_pace + 5
             else:
@@ -261,8 +292,7 @@ if __name__ == "__main__":
     my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {}, app_settings)
     final_schedule = my_scheduler.generate_schedule()
 
-    # --- FULLY RESTORED DISPLAY LOGIC ---
-    print("\n--- Your AI-Generated Daily Schedule (v7.1.1 Corrected) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v7.3.1 Stable) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots: print(slots["All Day"]); continue
