@@ -1,8 +1,11 @@
-
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
 import copy
+# NEW: Import the library to talk to the Gemini API
+# You would need to run "pip install google-generativeai" in your Terminal
+import google.generativeai as genai
+import os
 
 # --- 1. Data Structures ---
 
@@ -26,7 +29,7 @@ class Task:
         self.status = 'active'
         self.is_for_today = is_for_today
         self.one_off_today = one_off_today
-        self.constraints = constraints or {} # NEW: Scheduling constraints
+        self.constraints = constraints or {}
 
 class Routine:
     def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0, constraints=None):
@@ -36,9 +39,9 @@ class Routine:
         self.end_time = end_time
         self.total_hours = total_hours
         self.is_flexible = (start_time is None)
-        self.constraints = constraints or {} # NEW: Scheduling constraints
+        self.constraints = constraints or {}
 
-# --- 2. The "Brain" - Scheduler Class v8.0 ---
+# --- 2. The "Brain" - Scheduler Class (Stable) ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels, settings):
@@ -73,12 +76,10 @@ class Scheduler:
                 chunked_list.append(copy.copy(task))
         return chunked_list
     
-    # NEW: Method to check task constraints
     def _check_constraints(self, task, slot_time):
         if 'not_before' in task.constraints:
             if slot_time < task.constraints['not_before']:
                 return False
-        # Future constraints like 'not_after' would go here
         return True
 
     def _get_slot_context(self, day, slot_time):
@@ -123,7 +124,6 @@ class Scheduler:
             for slot_time in sorted(self.schedule[today_date].keys()):
                 if not today_chunks: break
                 if self.schedule[today_date][slot_time] is None:
-                    # Find a chunk that fits the constraints for this slot
                     found_chunk = False
                     for index, chunk in enumerate(today_chunks):
                         if self._check_constraints(chunk, slot_time):
@@ -187,6 +187,67 @@ class Scheduler:
         
         return self.schedule
 
+# --- NEW: The "AI Companion" Module ---
+
+class AI_Companion:
+    def __init__(self, api_key):
+        try:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel('gemini-pro')
+            self.is_active = True
+        except Exception as e:
+            print(f"Error configuring AI Companion: {e}")
+            self.is_active = False
+
+    def generate_daily_forecast(self, user_name, schedule_for_today, user_settings):
+        if not self.is_active:
+            return "AI Companion is currently unavailable."
+        
+        density = "moderately busy"
+        dominant_category = "Work tasks"
+
+        prompt = f"""
+        You are an AI companion dedicated to helping your user, {user_name}, live a better life.
+        Today is {date.today().strftime('%A, %B %d')}.
+        Analyze the following data and generate a short, encouraging 'Daily Forecast' that offers guidance for the day. Be insightful, warm, and actionable.
+
+        - Today's Schedule Density: {density}
+        - Dominant Task Categories: {dominant_category}
+        - User's Stated Priorities: This user values 'Hobbies' for Enjoyment (9/10).
+
+        Based on this data, generate the forecast.
+        """
+        
+        print("\n--- Sending prompt to AI for Daily Forecast... ---")
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"Error getting forecast from AI: {e}"
+
+    def suggest_new_activity(self, user_name, user_hobbies, current_time_context):
+        if not self.is_active:
+            return "AI Companion is currently unavailable."
+        
+        prompt = f"""
+        You are an AI companion helping your user, {user_name}, find a fulfilling activity.
+        The user has some free time right now ({current_time_context}).
+        Their known hobbies and interests include: {', '.join(user_hobbies)}.
+
+        Based on this, and your vast knowledge of human activities, suggest one single, novel, 30-minute activity they might enjoy.
+        Provide a 1-2 sentence rationale for why you are suggesting it.
+        Format the output as:
+        SUGGESTION: [Activity Name]
+        RATIONALE: [Your reason]
+        """
+        
+        print("\n--- Sending prompt to AI for Magic Wand suggestion... ---")
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"Error getting suggestion from AI: {e}"
+
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
     start_date = date(2025, 9, 1)
@@ -205,10 +266,6 @@ if __name__ == "__main__":
         ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
         ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
         ScheduledEvent("CMSCE Contract / MOU table meeting", date(2025, 9, 2), time(9, 30), time(10, 30)),
-        ScheduledEvent("Peer mentoring session", date(2025, 9, 9), time(9, 30), time(12, 30)),
-        ScheduledEvent("Call with Dad?", date(2025, 9, 9), time(14, 0), time(15, 0)),
-        ScheduledEvent("Division-wide meeting with Angelica (small presentation)", date(2025, 9, 16), time(14, 0), time(15, 30)),
-        ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
     ]
 
     user_routines = [
@@ -224,17 +281,12 @@ if __name__ == "__main__":
         Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
         # Long-term Projects
         Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
-        Task("Boat stuff", "Long-term project", total_hours=1),
-        Task("Solve printer offline", "Long-term project"),
-        Task("Get RU-PSU football tickets", "Long-term project"),
-        Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
-        # ... and all other tasks from before
         Task("new reverse osmosis", "Long-term project"),
         Task("Spencer's car", "Long-term project"),
         # Hobbies
         Task("Pillows", "Hobby"),
         Task("Wine shopping?", "Hobby"),
-        # NEW: "For Today" tasks for Sept 1
+        # "For Today" tasks for Sept 1
         Task("get haircut", "Hobby", is_for_today=True, one_off_today=True, total_hours=0.5, constraints={'not_before': time(10, 0)}),
         Task("laundry", "Value", is_for_today=True, one_off_today=True, total_hours=1),
         Task("Spencer - UW materials and call", "Value", is_for_today=True, one_off_today=True, total_hours=0.5),
@@ -243,7 +295,6 @@ if __name__ == "__main__":
         Task("review contract stuff", "Assignment", is_for_today=True, one_off_today=True, total_hours=0.5),
     ]
     
-    # Prioritization Engine
     DEFAULTS = {
         "Assignment": {"I": 7, "E": 4}, "Long-term project": {"U": 4, "I": 7, "E": 5},
         "Value": {"U": 4, "I": 8, "E": 7}, "Hobby": {"U": 3, "I": 4, "E": 9}
@@ -255,8 +306,7 @@ if __name__ == "__main__":
             defaults = DEFAULTS.get(task.category, {})
             task.importance = defaults.get("I", 0); task.enjoyment = defaults.get("E", 0)
             if task.category == "Assignment" and task.deadline:
-                # Using the simulation start_date for deterministic results
-                work_days_left = (task.deadline - start_date).days if task.deadline else 1
+                work_days_left = (task.deadline - date.today()).days
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left; task.urgency = required_pace + 5
             else:
@@ -267,7 +317,7 @@ if __name__ == "__main__":
     my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {}, app_settings)
     final_schedule = my_scheduler.generate_schedule()
 
-    print("\n--- Your AI-Generated Daily Schedule (v8.0 with Constraints) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v8.1) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots: print(slots["All Day"]); continue
@@ -285,3 +335,32 @@ if __name__ == "__main__":
             end_str = end_time.strftime('%I:%M %p')
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
+    
+    # --- AI Companion Demo ---
+    print("\n\n=============================================")
+    print("--- AI COMPANION DEMO ---")
+    print("=============================================")
+    
+    my_api_key = os.getenv("GEMINI_API_KEY") # Reads from .env file
+    
+    if not my_api_key:
+        print("API Key not found in .env file. Skipping AI Companion demo.")
+    else:
+        companion = AI_Companion(api_key=my_api_key)
+        if companion.is_active:
+            forecast = companion.generate_daily_forecast(
+                user_name="Dave",
+                schedule_for_today=final_schedule.get(start_date, {}),
+                user_settings={}
+            )
+            print("\n--- Your Daily Forecast ---")
+            print(forecast)
+
+            user_hobby_names = [t.name for t in all_user_tasks if t.category == 'Hobby']
+            suggestion = companion.suggest_new_activity(
+                user_name="Dave",
+                user_hobbies=user_hobby_names,
+                current_time_context="on a Monday afternoon"
+            )
+            print("\n--- Magic Wand Suggestion ---")
+            print(suggestion)
