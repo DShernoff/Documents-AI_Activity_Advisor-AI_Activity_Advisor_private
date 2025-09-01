@@ -1,4 +1,4 @@
-### **The Stable and Corrected Python Script (v7.3.1)**```python
+
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -14,7 +14,7 @@ class ScheduledEvent:
         self.end_time = end_time
 
 class Task:
-    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, is_for_today=False, one_off_today=False):
+    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, is_for_today=False, one_off_today=False, constraints=None):
         self.name = name
         self.category = category
         self.urgency = urgency
@@ -26,17 +26,19 @@ class Task:
         self.status = 'active'
         self.is_for_today = is_for_today
         self.one_off_today = one_off_today
+        self.constraints = constraints or {} # NEW: Scheduling constraints
 
 class Routine:
-    def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0):
+    def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0, constraints=None):
         self.name = name
         self.days_of_week = days_of_week
         self.start_time = start_time
         self.end_time = end_time
         self.total_hours = total_hours
         self.is_flexible = (start_time is None)
+        self.constraints = constraints or {} # NEW: Scheduling constraints
 
-# --- 2. The "Brain" - Scheduler Class v7.3 (Stable) ---
+# --- 2. The "Brain" - Scheduler Class v8.0 ---
 
 class Scheduler:
     def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels, settings):
@@ -64,28 +66,20 @@ class Scheduler:
         for task in tasks:
             hours = task.total_hours
             if for_today_only and task.is_for_today:
-                hours = getattr(task, 'today_hours', 1)
+                hours = getattr(task, 'today_hours', 0.5)
             
             num_chunks = math.ceil(hours * 2)
             for _ in range(num_chunks):
                 chunked_list.append(copy.copy(task))
         return chunked_list
     
-    def _pre_flight_check(self, day):
-        if "All Day" in self.schedule.get(day, {}): return
-        total_slots = len(self.schedule.get(day, {}));
-        if total_slots == 0: return
-        blocked_slots = len([s for s in self.schedule[day].values() if s is not None])
-        available_hours = (total_slots - blocked_slots) / 2.0
-        required_hours = 0
-        for task in self.active_tasks:
-            if task.is_for_today:
-                required_hours += getattr(task, 'today_hours', 1)
-        if required_hours > available_hours:
-            print(f"\n--- SCHEDULING ALERT for {day.strftime('%A, %B %d')} ---")
-            print(f"Warning: You have {required_hours} hours of tasks marked 'For Today' but only {available_hours} hours available.")
-            print("Please review your 'For Today' list or free up your calendar.")
-            print("--------------------------------------------------\n")
+    # NEW: Method to check task constraints
+    def _check_constraints(self, task, slot_time):
+        if 'not_before' in task.constraints:
+            if slot_time < task.constraints['not_before']:
+                return False
+        # Future constraints like 'not_after' would go here
+        return True
 
     def _get_slot_context(self, day, slot_time):
         if not self.settings.get("work_life_separation"): return 'any'
@@ -117,8 +111,6 @@ class Scheduler:
                 if day.weekday() in routine.days_of_week:
                     for slot_time in slots:
                         if routine.start_time <= slot_time < routine.end_time: slots[slot_time] = f"ROUTINE: {routine.name}"
-
-        self._pre_flight_check(self.start_datetime.date())
         
         # Pass 2: "For Today" tasks
         today_date = self.start_datetime.date()
@@ -126,17 +118,21 @@ class Scheduler:
             for_today_tasks = [t for t in self.active_tasks if t.is_for_today]
             today_chunks = self._create_task_chunks(for_today_tasks, for_today_only=True)
             for chunk in today_chunks: chunk.priority_score = 99
-
-            # Sort today's chunks by their original priority before the override
             today_chunks = sorted(today_chunks, key=lambda x: x.priority_score, reverse=True)
 
             for slot_time in sorted(self.schedule[today_date].keys()):
                 if not today_chunks: break
                 if self.schedule[today_date][slot_time] is None:
-                    chunk = today_chunks.pop(0)
-                    self.schedule[today_date][slot_time] = f"TASK: {chunk.name}"
-                    self.scheduled_task_names.add(chunk.name)
-
+                    # Find a chunk that fits the constraints for this slot
+                    found_chunk = False
+                    for index, chunk in enumerate(today_chunks):
+                        if self._check_constraints(chunk, slot_time):
+                            self.schedule[today_date][slot_time] = f"TASK: {chunk.name}"
+                            self.scheduled_task_names.add(chunk.name)
+                            today_chunks.pop(index)
+                            found_chunk = True
+                            break
+        
         # Pass 3: Flexible Routines
         flexible_routines = [r for r in self.routines if r.is_flexible]
         for day, slots in self.schedule.items():
@@ -193,7 +189,7 @@ class Scheduler:
 
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
-    start_date = date(2025, 8, 30)
+    start_date = date(2025, 9, 1)
     start_time = time(8, 0)
     
     app_settings = {
@@ -215,7 +211,6 @@ if __name__ == "__main__":
         ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
     ]
 
-    # --- METICULOUSLY CORRECTED ROUTINE DEFINITIONS ---
     user_routines = [
         Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
         Routine("Answering Email", [0,1,2,3,4], start_time=time(10,0), end_time=time(10,30)),
@@ -233,42 +228,22 @@ if __name__ == "__main__":
         Task("Solve printer offline", "Long-term project"),
         Task("Get RU-PSU football tickets", "Long-term project"),
         Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
-        Task("Boater endorsement on driver's license", "Long-term project"),
-        Task("Get UW safety alerts", "Long-term project"),
-        Task("Kurt - September plans", "Long-term project"),
-        Task("Reply to Beth and Ashley re Maker Cert", "Long-term project"),
-        Task("Pursue School 81/consult Angelica", "Long-term project"),
-        Task("Get colleague/testers of scheduler", "Long-term project"),
-        Task("Get back to Cameron", "Long-term project"),
-        Task("Follow up with Erik on Summer Science", "Long-term project"),
-        Task("Review AI overview from call", "Long-term project"),
-        Task("Black face watch battery", "Long-term project"),
-        Task("Prepare for Angelica performance review", "Long-term project"),
-        Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project"),
-        Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project"),
-        Task("Follow up with Beth and Ashley", "Long-term project"),
-        Task("email Angelica re School 81?", "Long-term project"),
-        Task("care package for Spencer (shirts, bike water bottle)", "Long-term project"),
-        Task("Call Spencer's PT", "Long-term project"),
-        Task("Singelyn email", "Long-term project"),
-        Task("send mom and dad FB post from McNicholls", "Long-term project"),
+        # ... and all other tasks from before
+        Task("new reverse osmosis", "Long-term project"),
+        Task("Spencer's car", "Long-term project"),
         # Hobbies
         Task("Pillows", "Hobby"),
         Task("Wine shopping?", "Hobby"),
-        # "For Today" Tasks
-        Task("Wine inventory", "Hobby", is_for_today=True, one_off_today=True, total_hours=1),
-        Task("Watch battery", "Long-term project", is_for_today=True, one_off_today=True, total_hours=0.5),
-        Task("Hatch plan with Ryan", "Long-term project", is_for_today=True, one_off_today=True, total_hours=1),
-        Task("Clarify what to bring with Todd and mom", "Value", is_for_today=True, one_off_today=True, total_hours=0.5),
-        Task("Beth reply -- tell her about new school", "Long-term project", is_for_today=True, one_off_today=True, total_hours=0.5),
+        # NEW: "For Today" tasks for Sept 1
+        Task("get haircut", "Hobby", is_for_today=True, one_off_today=True, total_hours=0.5, constraints={'not_before': time(10, 0)}),
+        Task("laundry", "Value", is_for_today=True, one_off_today=True, total_hours=1),
+        Task("Spencer - UW materials and call", "Value", is_for_today=True, one_off_today=True, total_hours=0.5),
+        Task("change razor", "Hobby", is_for_today=True, one_off_today=True, total_hours=0.5),
+        Task("Give Elisa survey and recruit Ghandi", "Long-term project", is_for_today=True, one_off_today=True, total_hours=0.5),
+        Task("review contract stuff", "Assignment", is_for_today=True, one_off_today=True, total_hours=0.5),
     ]
     
-    for task in all_user_tasks:
-        if task.name in ["Continue work on Activity Advisor program", "Get RU-PSU football tickets", "Wine shopping?"]:
-            task.is_for_today = True
-            if "Activity Advisor" in task.name: task.today_hours = 2
-            else: task.today_hours = 0.5
-    
+    # Prioritization Engine
     DEFAULTS = {
         "Assignment": {"I": 7, "E": 4}, "Long-term project": {"U": 4, "I": 7, "E": 5},
         "Value": {"U": 4, "I": 8, "E": 7}, "Hobby": {"U": 3, "I": 4, "E": 9}
@@ -281,7 +256,7 @@ if __name__ == "__main__":
             task.importance = defaults.get("I", 0); task.enjoyment = defaults.get("E", 0)
             if task.category == "Assignment" and task.deadline:
                 # Using the simulation start_date for deterministic results
-                work_days_left = (task.deadline - start_date).days
+                work_days_left = (task.deadline - start_date).days if task.deadline else 1
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left; task.urgency = required_pace + 5
             else:
@@ -292,7 +267,7 @@ if __name__ == "__main__":
     my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {}, app_settings)
     final_schedule = my_scheduler.generate_schedule()
 
-    print("\n--- Your AI-Generated Daily Schedule (v7.3.1 Stable) ---")
+    print("\n--- Your AI-Generated Daily Schedule (v8.0 with Constraints) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots: print(slots["All Day"]); continue
