@@ -2,8 +2,6 @@
 from datetime import time, timedelta, date, datetime
 import math
 import copy
-# NEW: Import the library to talk to the Gemini API
-# You would need to run "pip install google-generativeai" in your Terminal
 import google.generativeai as genai
 import os
 
@@ -32,34 +30,37 @@ class Task:
         self.constraints = constraints or {}
 
 class Routine:
-    def __init__(self, name, days_of_week, start_time=None, end_time=None, total_hours=0, constraints=None):
+    def __init__(self, name, days_of_week=None, day_of_month=None, start_time=None, end_time=None, total_hours=0, constraints=None):
         self.name = name
         self.days_of_week = days_of_week
+        self.day_of_month = day_of_month
         self.start_time = start_time
         self.end_time = end_time
         self.total_hours = total_hours
         self.is_flexible = (start_time is None)
         self.constraints = constraints or {}
 
-# --- 2. The "Brain" - Scheduler Class (Stable) ---
+# --- 2. The "Brain" - Scheduler Class v9.1 ---
 
 class Scheduler:
-    def __init__(self, start_date, start_time, num_days, scheduled_events, tasks, routines, energy_levels, settings):
+    def __init__(self, start_date, start_time, num_days, user_profile):
         self.start_datetime = datetime.combine(start_date, start_time)
         self.num_days = num_days
-        self.scheduled_events = scheduled_events
-        self.all_tasks = tasks
-        self.active_tasks = [t for t in tasks if t.status == 'active']
-        self.routines = routines
-        self.energy_levels = energy_levels
-        self.settings = settings
+        self.user_profile = user_profile
+        self.scheduled_events = user_profile.get("events", [])
+        self.all_tasks = user_profile.get("tasks", [])
+        self.active_tasks = [t for t in self.all_tasks if t.status == 'active']
+        self.routines = user_profile.get("routines", [])
+        self.settings = user_profile.get("settings", {})
         self.schedule = {}
         self.scheduled_task_names = set()
 
     def _create_time_slots(self, day):
         slots = {}
-        start_of_day = datetime.combine(day, time(8, 0))
-        for i in range(26):
+        start_hour, end_hour = self.settings.get("schedule_window", (8, 21))
+        duration_hours = end_hour - start_hour
+        start_of_day = datetime.combine(day, time(start_hour, 0))
+        for i in range(duration_hours * 2):
             slot_time = (start_of_day + timedelta(minutes=30 * i)).time()
             slots[slot_time] = None
         return slots
@@ -70,16 +71,14 @@ class Scheduler:
             hours = task.total_hours
             if for_today_only and task.is_for_today:
                 hours = getattr(task, 'today_hours', 0.5)
-            
             num_chunks = math.ceil(hours * 2)
             for _ in range(num_chunks):
                 chunked_list.append(copy.copy(task))
         return chunked_list
     
     def _check_constraints(self, task, slot_time):
-        if 'not_before' in task.constraints:
-            if slot_time < task.constraints['not_before']:
-                return False
+        if 'not_before' in task.constraints and slot_time < task.constraints['not_before']:
+            return False
         return True
 
     def _get_slot_context(self, day, slot_time):
@@ -95,7 +94,21 @@ class Scheduler:
         # Initialization
         for i in range(self.num_days):
             current_date = self.start_datetime.date() + timedelta(days=i)
+            # Handle dynamic schedule window
+            start_hour, _ = self.settings.get("schedule_window", (8, 21))
+            # Special case for Elisa's early commute
+            if self.user_profile["name"] == "Elisa" and current_date.weekday() < 2:
+                 start_hour = 6
             self.schedule[current_date] = self._create_time_slots(current_date)
+            # Re-create slots if dynamic start time is needed
+            if start_hour != self.settings.get("schedule_window", (8, 21))[0]:
+                self.schedule[current_date] = {}
+                start_of_day = datetime.combine(current_date, time(start_hour, 30))
+                num_slots = (self.settings.get("schedule_window", (8, 21))[1] - start_hour) * 2
+                for i in range(int(num_slots)):
+                    slot_time = (start_of_day + timedelta(minutes=30 * i)).time()
+                    self.schedule[current_date][slot_time] = None
+
 
         # Pass 1: Statics
         all_day_events = []
@@ -109,7 +122,9 @@ class Scheduler:
         for day, slots in self.schedule.items():
             if day in all_day_events: continue
             for routine in static_routines:
-                if day.weekday() in routine.days_of_week:
+                is_today = (routine.days_of_week and day.weekday() in routine.days_of_week) or \
+                           (routine.day_of_month and day.day == routine.day_of_month)
+                if is_today:
                     for slot_time in slots:
                         if routine.start_time <= slot_time < routine.end_time: slots[slot_time] = f"ROUTINE: {routine.name}"
         
@@ -120,7 +135,6 @@ class Scheduler:
             today_chunks = self._create_task_chunks(for_today_tasks, for_today_only=True)
             for chunk in today_chunks: chunk.priority_score = 99
             today_chunks = sorted(today_chunks, key=lambda x: x.priority_score, reverse=True)
-
             for slot_time in sorted(self.schedule[today_date].keys()):
                 if not today_chunks: break
                 if self.schedule[today_date][slot_time] is None:
@@ -129,24 +143,23 @@ class Scheduler:
                         if self._check_constraints(chunk, slot_time):
                             self.schedule[today_date][slot_time] = f"TASK: {chunk.name}"
                             self.scheduled_task_names.add(chunk.name)
-                            today_chunks.pop(index)
-                            found_chunk = True
-                            break
+                            today_chunks.pop(index); found_chunk = True; break
         
         # Pass 3: Flexible Routines
         flexible_routines = [r for r in self.routines if r.is_flexible]
         for day, slots in self.schedule.items():
-            if day in all_day_events or not flexible_routines: continue
-            routine = flexible_routines[0]
-            chunks_needed = math.ceil(routine.total_hours * 2)
-            for slot_start_time in sorted(slots.keys()):
-                is_block_free = True; block_times = []
-                for i in range(chunks_needed):
-                    current_slot_time = (datetime.combine(day, slot_start_time) + timedelta(minutes=30 * i)).time()
-                    if slots.get(current_slot_time) is not None: is_block_free = False; break
-                    block_times.append(current_slot_time)
-                if is_block_free:
-                    for t in block_times: slots[t] = f"ROUTINE: {routine.name}"; break
+            if day in all_day_events: continue
+            for routine in flexible_routines:
+                if routine.days_of_week and day.weekday() in routine.days_of_week:
+                    chunks_needed = math.ceil(routine.total_hours * 2)
+                    for slot_start_time in sorted(slots.keys()):
+                        is_block_free = True; block_times = []
+                        for i in range(chunks_needed):
+                            current_slot_time = (datetime.combine(day, slot_start_time) + timedelta(minutes=30 * i)).time()
+                            if slots.get(current_slot_time) is not None: is_block_free = False; break
+                            block_times.append(current_slot_time)
+                        if is_block_free:
+                            for t in block_times: slots[t] = f"ROUTINE: {routine.name}"; break
 
         # Pass 4: Remaining Flexible Tasks
         remaining_tasks = [t for t in self.active_tasks if not t.is_for_today]
@@ -164,8 +177,8 @@ class Scheduler:
                     if self.schedule[current_date][slot_time] is None:
                         context = self._get_slot_context(current_date, slot_time)
                         chunk_to_schedule = None
-                        if context == 'Work' and work_chunks: chunk_to_schedule = work_chunks.pop(0)
-                        elif context == 'Personal' and personal_chunks: chunk_to_schedule = personal_chunks.pop(0)
+                        if context in ['any', 'Work'] and work_chunks: chunk_to_schedule = work_chunks.pop(0)
+                        elif context in ['any', 'Personal'] and personal_chunks: chunk_to_schedule = personal_chunks.pop(0)
                         
                         if chunk_to_schedule:
                             self.schedule[current_date][slot_time] = f"TASK: {chunk_to_schedule.name}"
@@ -178,8 +191,8 @@ class Scheduler:
                 if slots[slot_time] is None:
                     context = self._get_slot_context(day, slot_time)
                     chunk_to_fill = None
-                    if context == 'Work' and work_chunks: chunk_to_fill = work_chunks.pop(0)
-                    elif context == 'Personal' and personal_chunks: chunk_to_fill = personal_chunks.pop(0)
+                    if context in ['any', 'Work'] and work_chunks: chunk_to_fill = work_chunks.pop(0)
+                    elif context in ['any', 'Personal'] and personal_chunks: chunk_to_fill = personal_chunks.pop(0)
                     if chunk_to_fill:
                         slots[slot_time] = f"TASK: {chunk_to_fill.name}"
                     else:
@@ -187,8 +200,7 @@ class Scheduler:
         
         return self.schedule
 
-# --- NEW: The "AI Companion" Module ---
-
+# --- FULLY RESTORED AI Companion Module ---
 class AI_Companion:
     def __init__(self, api_key):
         try:
@@ -199,49 +211,29 @@ class AI_Companion:
             print(f"Error configuring AI Companion: {e}")
             self.is_active = False
 
-    def generate_daily_forecast(self, user_name, schedule_for_today, user_settings):
-        if not self.is_active:
-            return "AI Companion is currently unavailable."
-        
-        density = "moderately busy"
-        dominant_category = "Work tasks"
-
+    def generate_daily_forecast(self, user_name, schedule_for_today):
+        if not self.is_active: return "AI Companion is currently unavailable."
+        density = "moderately busy"; dominant_category = "Work tasks"
         prompt = f"""
-        You are an AI companion dedicated to helping your user, {user_name}, live a better life.
-        Today is {date.today().strftime('%A, %B %d')}.
-        Analyze the following data and generate a short, encouraging 'Daily Forecast' that offers guidance for the day. Be insightful, warm, and actionable.
-
+        You are an AI companion for a user named {user_name}. Today is {date.today().strftime('%A, %B %d')}.
+        Generate a short, encouraging 'Daily Forecast' (like a mindful horoscope) based on this data:
         - Today's Schedule Density: {density}
         - Dominant Task Categories: {dominant_category}
-        - User's Stated Priorities: This user values 'Hobbies' for Enjoyment (9/10).
-
-        Based on this data, generate the forecast.
+        Based on this, generate the forecast.
         """
-        
-        print("\n--- Sending prompt to AI for Daily Forecast... ---")
         try:
             response = self.model.generate_content(prompt)
             return response.text
         except Exception as e:
             return f"Error getting forecast from AI: {e}"
 
-    def suggest_new_activity(self, user_name, user_hobbies, current_time_context):
-        if not self.is_active:
-            return "AI Companion is currently unavailable."
-        
+    def suggest_new_activity(self, user_name, user_hobbies):
+        if not self.is_active: return "AI Companion is currently unavailable."
         prompt = f"""
-        You are an AI companion helping your user, {user_name}, find a fulfilling activity.
-        The user has some free time right now ({current_time_context}).
-        Their known hobbies and interests include: {', '.join(user_hobbies)}.
-
-        Based on this, and your vast knowledge of human activities, suggest one single, novel, 30-minute activity they might enjoy.
-        Provide a 1-2 sentence rationale for why you are suggesting it.
-        Format the output as:
-        SUGGESTION: [Activity Name]
-        RATIONALE: [Your reason]
+        A user named {user_name} has free time. Their hobbies include: {', '.join(user_hobbies)}.
+        Suggest one single, novel, 30-minute activity they might enjoy.
+        Format as: SUGGESTION: [Name] RATIONALE: [Reason]
         """
-        
-        print("\n--- Sending prompt to AI for Magic Wand suggestion... ---")
         try:
             response = self.model.generate_content(prompt)
             return response.text
@@ -250,74 +242,86 @@ class AI_Companion:
 
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
-    start_date = date(2025, 9, 1)
-    start_time = time(8, 0)
     
-    app_settings = {
-        "work_life_separation": True,
-        "personal_time_definition": "Weekends & Evenings",
-        "category_types": {
-            "Assignment": "Work", "Long-term project": "Work",
-            "Value": "Personal", "Hobby": "Personal"
-        }
+    # --- Multi-user "Filing Cabinet" ---
+    david_profile = {
+        "name": "David",
+        "settings": {
+            "work_life_separation": False, "schedule_window": (8, 21),
+            "DEFAULTS": { "Assignment": {"I": 7, "E": 4}, "Long-term project": {"U": 4, "I": 7, "E": 5},
+                         "Value": {"U": 4, "I": 8, "E": 7}, "Hobby": {"U": 3, "I": 4, "E": 9} },
+            "WEIGHTS": {"U": 2, "I": 1, "E": 1}
+        },
+        "events": [ # David's events
+            ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
+            ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
+        ],
+        "routines": [ # David's routines
+             Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
+             Routine("Exercise", [0,1,2,3,4,5,6], total_hours=1.5),
+        ],
+        "tasks": [ # David's tasks
+            Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
+        ]
+    }
+
+    elisa_profile = {
+        "name": "Elisa",
+        "settings": {
+            "work_life_separation": True, "personal_time_definition": "Weekends & Evenings",
+            "schedule_window": (7, 21), "category_types": { "Assignment": "Work", "Long-term project": "Work",
+                                                            "Value": "Personal", "Hobby": "Personal" },
+            "DEFAULTS": { "Assignment": {"I": 10, "E": 4}, "Long-term project": {"U": 8, "I": 7, "E": 5},
+                         "Value": {"U": 9, "I": 10, "E": 10}, "Hobby": {"U": 3, "I": 4, "E": 9} },
+            "WEIGHTS": {"U": 1, "I": 1, "E": 1}
+        },
+        "events": [ # Elisa's events
+            ScheduledEvent("Jennifer Foster?", date(2025, 9, 2), time(9, 0), time(10, 0)),
+        ],
+        "routines": [ # Elisa's routines
+             Routine("Commute to work", [0, 1], start_time=time(6,30), end_time=time(7,15)),
+             Routine("Dinner", [0,1,2,3,4], start_time=time(18,0), end_time=time(18,30)),
+        ],
+        "tasks": [ # Elisa's tasks
+            Task("Call liberty corner exxon", "Assignment", total_hours=0.25, deadline=date(2025, 9, 2)),
+        ]
     }
     
-    user_events = [
-        ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
-        ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
-        ScheduledEvent("CMSCE Contract / MOU table meeting", date(2025, 9, 2), time(9, 30), time(10, 30)),
-    ]
-
-    user_routines = [
-        Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
-        Routine("Answering Email", [0,1,2,3,4], start_time=time(10,0), end_time=time(10,30)),
-        Routine("Morning Rituals", [0,1,2,3,4], start_time=time(8,0), end_time=time(9,0)),
-        Routine("Morning Rituals", [5,6], start_time=time(8,30), end_time=time(10,0)),
-        Routine("Exercise", [0,1,2,3,4,5,6], total_hours=1.5),
-    ]
+    user_profiles = {"david": david_profile, "elisa": elisa_profile}
+    active_user_id = "elisa" # <-- CHANGE THIS to "david" to run his schedule
     
-    all_user_tasks = [
-        # Assignments
-        Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
-        # Long-term Projects
-        Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
-        Task("new reverse osmosis", "Long-term project"),
-        Task("Spencer's car", "Long-term project"),
-        # Hobbies
-        Task("Pillows", "Hobby"),
-        Task("Wine shopping?", "Hobby"),
-        # "For Today" tasks for Sept 1
-        Task("get haircut", "Hobby", is_for_today=True, one_off_today=True, total_hours=0.5, constraints={'not_before': time(10, 0)}),
-        Task("laundry", "Value", is_for_today=True, one_off_today=True, total_hours=1),
-        Task("Spencer - UW materials and call", "Value", is_for_today=True, one_off_today=True, total_hours=0.5),
-        Task("change razor", "Hobby", is_for_today=True, one_off_today=True, total_hours=0.5),
-        Task("Give Elisa survey and recruit Ghandi", "Long-term project", is_for_today=True, one_off_today=True, total_hours=0.5),
-        Task("review contract stuff", "Assignment", is_for_today=True, one_off_today=True, total_hours=0.5),
-    ]
+    # --- Load Active User Data ---
+    active_user = user_profiles[active_user_id]
+    start_date = date(2025, 9, 2)
+    start_time = time(active_user["settings"]["schedule_window"][0], 0)
     
-    DEFAULTS = {
-        "Assignment": {"I": 7, "E": 4}, "Long-term project": {"U": 4, "I": 7, "E": 5},
-        "Value": {"U": 4, "I": 8, "E": 7}, "Hobby": {"U": 3, "I": 4, "E": 9}
-    }
-    WEIGHTS = {"U": 2, "I": 1, "E": 1}
+    # --- Prioritization Engine ---
+    DEFAULTS = active_user["settings"]["DEFAULTS"]
+    WEIGHTS = active_user["settings"]["WEIGHTS"]
 
-    for task in all_user_tasks:
+    for task in active_user["tasks"]:
         if task.status == 'active':
             defaults = DEFAULTS.get(task.category, {})
             task.importance = defaults.get("I", 0); task.enjoyment = defaults.get("E", 0)
             if task.category == "Assignment" and task.deadline:
-                work_days_left = (task.deadline - date.today()).days
+                work_days_left = (task.deadline - start_date).days
                 if work_days_left < 1: work_days_left = 1
-                required_pace = task.total_hours / work_days_left; task.urgency = required_pace + 5
+                required_pace = task.total_hours / work_days_left
+                # Use different urgency formulas per user
+                urgency_add = 5 if active_user_id == "david" else 0
+                task.urgency = required_pace + urgency_add
             else:
                 task.urgency = defaults.get("U", 0)
-            numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
-            denominator = sum(WEIGHTS.values()); task.priority_score = numerator / denominator
             
-    my_scheduler = Scheduler(start_date, start_time, 7, user_events, all_user_tasks, user_routines, {}, app_settings)
+            numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
+            denominator = sum(WEIGHTS.values());
+            task.priority_score = numerator / denominator
+            
+    # --- Run Scheduler and Print ---
+    my_scheduler = Scheduler(start_date, start_time, 7, active_user)
     final_schedule = my_scheduler.generate_schedule()
 
-    print("\n--- Your AI-Generated Daily Schedule (v8.1) ---")
+    print(f"\n--- {active_user['name']}'s AI-Generated Schedule (v9.1) ---")
     for day, slots in final_schedule.items():
         print(f"\n--- {day.strftime('%A, %B %d, %Y')} ---")
         if "All Day" in slots: print(slots["All Day"]); continue
@@ -335,32 +339,3 @@ if __name__ == "__main__":
             end_str = end_time.strftime('%I:%M %p')
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
-    
-    # --- AI Companion Demo ---
-    print("\n\n=============================================")
-    print("--- AI COMPANION DEMO ---")
-    print("=============================================")
-    
-    my_api_key = os.getenv("GEMINI_API_KEY") # Reads from .env file
-    
-    if not my_api_key:
-        print("API Key not found in .env file. Skipping AI Companion demo.")
-    else:
-        companion = AI_Companion(api_key=my_api_key)
-        if companion.is_active:
-            forecast = companion.generate_daily_forecast(
-                user_name="Dave",
-                schedule_for_today=final_schedule.get(start_date, {}),
-                user_settings={}
-            )
-            print("\n--- Your Daily Forecast ---")
-            print(forecast)
-
-            user_hobby_names = [t.name for t in all_user_tasks if t.category == 'Hobby']
-            suggestion = companion.suggest_new_activity(
-                user_name="Dave",
-                user_hobbies=user_hobby_names,
-                current_time_context="on a Monday afternoon"
-            )
-            print("\n--- Magic Wand Suggestion ---")
-            print(suggestion)
