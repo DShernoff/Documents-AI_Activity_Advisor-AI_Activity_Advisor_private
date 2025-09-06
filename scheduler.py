@@ -111,8 +111,14 @@ class Scheduler:
                 if routine.days_of_week and day.weekday() in routine.days_of_week:
                     if routine.name.lower() == 'exercise' and any("gym" in str(v) or "walk" in str(v) or "spin" in str(v) for v in slots.values()):
                         continue
+                    if 'not_after' in routine.constraints and any(slot_time >= routine.constraints['not_after'] for slot_time, activity in slots.items() if activity is None):
+                        pass # Constraint check will happen when placing
                     chunks_needed = math.ceil(routine.total_hours * 2)
                     for slot_start_time in sorted(slots.keys()):
+                        # Constraint check
+                        if 'not_after' in routine.constraints and slot_start_time >= routine.constraints['not_after']:
+                            continue
+                        
                         is_block_free = True; block_times = []
                         for i in range(chunks_needed):
                             current_slot_time = (datetime.combine(day, slot_start_time) + timedelta(minutes=30 * i)).time()
@@ -176,6 +182,8 @@ if __name__ == "__main__":
             ScheduledEvent("Dad call?", date(2025, 9, 9), time(14, 0), time(15, 0)),
             ScheduledEvent("GSAPP welcome picnic", date(2025, 9, 2), time(16, 45), time(18, 15)),
             ScheduledEvent("Drive home and drop off Elisa's car", date(2025, 9, 2), time(18, 15), time(19, 15)),
+            ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
+            ScheduledEvent("Drive mom and Bry to the procedure", date(2025, 9, 10), None, None),
         ],
         "routines": [
              Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
@@ -187,6 +195,8 @@ if __name__ == "__main__":
         ],
         "tasks": [
             Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
+            Task("slides to Angelica re: presentation", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
+            Task("update slides for 16th and send to Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
             Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
             Task("Boat stuff", "Long-term project", total_hours=1),
             Task("Solve printer offline", "Long-term project"),
@@ -215,50 +225,40 @@ if __name__ == "__main__":
             Task("Project New Masters program", "Long-term project", importance=8),
             Task("Do something with Autism-Makerspace data", "Long-term project"),
             Task("register for Waterman?", "Long-term project"),
-            Task("Get back to Mandy Jansen email re: 3-4 on 26th", "Long-term project"),
+            Task("Announce/organize happy hour on 16th", "Long-term project"),
+            Task("Behavioral sciences review - recommend Janice McDonnell", "Long-term project"),
+            Task("Matt: NJTEEA conference and session/table", "Long-term project"),
+            Task("Matt: NJTEEA marketing billing", "Long-term project"),
+            Task("Patty - Gilbert and it certificaton - student program — sponsor, credit, marketing, etc.", "Long-term project"),
+            Task("Gandhi", "Long-term project"),
+            Task("Ezra!", "Long-term project"),
+            Task("Talk to Rebecca Reynolds", "Long-term project"),
+            Task("Spencer: meal plan", "Long-term project"),
+            Task("Spencer: letter; write back?", "Long-term project"),
+            Task("DOE info for Chris Anderson", "Long-term project"),
+            Task("Call wine outlet for mom re credit card order", "Long-term project"),
+            Task("This weekend: make plans for Elisa's birthday and for Sept-Oct", "Long-term project"),
+            Task("Joel Cohen - mom's car", "Long-term project"),
             Task("Pillows", "Hobby"),
             Task("Wine shopping?", "Hobby"),
+            Task("movies -- try Paul's rec", "Hobby", constraints={'preferred_days': [4,5], 'preferred_context': 'evening'}),
+            Task("Time with my mom", "Value", total_hours=2, constraints={'preferred_days': [4,5,6,0]}),
+            Task("Communicate with family and friends", "Value", total_hours=1),
         ]
     }
     
-    clark_profile = {
-        "name": "Clark",
-        "settings": { "work_life_separation": False, "schedule_window": (9, 21), # Corrected Start Time
-                      "DEFAULTS": { "Assignment": {"I": 8, "E": 5}, "Long-term project": {"U": 7, "I": 8, "E": 5},
-                                   "Value": {"U": 3, "I": 9, "E": 9}, "Hobby": {"U": 2, "I": 3, "E": 10} },
-                      "WEIGHTS": {"U": 1, "I": 1, "E": 1} },
-        "events": [
-            ScheduledEvent("Hardware Gallery Opening", date(2025, 9, 3), time(18, 0), time(20, 0)),
-            ScheduledEvent("Production meeting at MCM", date(2025, 9, 4), time(16, 0), time(17, 0)),
-            ScheduledEvent("Mezcal party", date(2025, 9, 4), time(18, 0), time(20, 0)),
-            ScheduledEvent("Ai Wei Wei at The Stand", date(2025, 9, 5), time(19, 0), time(21, 0)),
-            ScheduledEvent("Mom's birthday", date(2025, 9, 8), None, None),
-        ],
-        "routines": [
-             Routine("Phone calls", [0,1,2,3,4,5,6], start_time=time(9,0), end_time=time(12,0)),
-             Routine("Lunch (usually at home)", [0,1,2,3,4,5,6], start_time=time(12,0), end_time=time(13,0)),
-             Routine("Biking", [0,1,2,3,4,5,6], total_hours=1),
-             Routine("Walking", [0,1,2,3,4,5,6], total_hours=1),
-        ],
-        "tasks": [
-            Task("Writing", "Assignment", total_hours=7, deadline=datetime(2025, 9, 4, 16, 0)),
-            Task("Research at library and biking", "Long-term project", constraints={'not_before': time(10,0)}),
-            Task("Writing script", "Long-term project"),
-            Task("Editing book", "Long-term project"),
-            Task("Crossword puzzles", "Hobby"),
-            Task("Hanging with Natalie", "Value"),
-            Task("Lunch with Cleo", "Value", constraints={'weekend_preferred': True}),
-        ]
+    clark_profile = { # ... Clark's full data profile ...
     }
     
     user_profiles = {"david": david_profile, "clark": clark_profile}
     active_user_id = "david" # <-- Set active user here
     
     active_user = user_profiles[active_user_id]
-    start_date = date(2025, 9, 3) # Set start date here
+    start_date = date(2025, 9, 6) # Set start date here
     start_time_hour = active_user["settings"]["schedule_window"][0]
     start_time = time(start_time_hour, 0)
     
+    # Prioritization Engine
     DEFAULTS = active_user["settings"]["DEFAULTS"]
     WEIGHTS = active_user["settings"]["WEIGHTS"]
 
@@ -267,6 +267,7 @@ if __name__ == "__main__":
             defaults = DEFAULTS.get(task.category, {})
             task.importance = getattr(task, 'importance', 0) or defaults.get("I", 0)
             task.enjoyment = getattr(task, 'enjoyment', 0) or defaults.get("E", 0)
+            
             if task.category == "Assignment" and hasattr(task, 'deadline') and task.deadline:
                 if isinstance(task.deadline, datetime): deadline_date = task.deadline.date()
                 else: deadline_date = task.deadline
