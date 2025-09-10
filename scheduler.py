@@ -109,13 +109,12 @@ class Scheduler:
         for day, slots in self.schedule.items():
             for routine in flexible_routines:
                 if routine.days_of_week and day.weekday() in routine.days_of_week:
-                    if routine.name.lower() == 'exercise' and any("gym" in str(v) or "walk" in str(v) or "spin" in str(v) for v in slots.values()):
+                    if routine.name.lower() == 'exercise' and any("gym" in str(v) or "walk" in str(v) or "spin" in str(v) or "triathlon" in str(v) for v in slots.values()):
                         continue
                     if 'not_after' in routine.constraints and any(slot_time >= routine.constraints['not_after'] for slot_time, activity in slots.items() if activity is None):
-                        pass # Constraint check will happen when placing
+                        pass
                     chunks_needed = math.ceil(routine.total_hours * 2)
                     for slot_start_time in sorted(slots.keys()):
-                        # Constraint check
                         if 'not_after' in routine.constraints and slot_start_time >= routine.constraints['not_after']:
                             continue
                         
@@ -176,14 +175,13 @@ if __name__ == "__main__":
             "WEIGHTS": {"U": 2, "I": 1, "E": 1}
         },
         "events": [
-            ScheduledEvent("CMSCE / marketing meeting with Sara", date(2025, 9, 3), time(10, 0), time(11, 0)),
-            ScheduledEvent("CMSCE team meeting", date(2025, 9, 4), time(13, 0), time(14, 30)),
             ScheduledEvent("Peer mentoring session", date(2025, 9, 9), time(9, 30), time(12, 30)),
-            ScheduledEvent("Dad call?", date(2025, 9, 9), time(14, 0), time(15, 0)),
-            ScheduledEvent("GSAPP welcome picnic", date(2025, 9, 2), time(16, 45), time(18, 15)),
-            ScheduledEvent("Drive home and drop off Elisa's car", date(2025, 9, 2), time(18, 15), time(19, 15)),
-            ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
             ScheduledEvent("Drive mom and Bry to the procedure", date(2025, 9, 10), None, None),
+            ScheduledEvent("Call with Eddie and Chris", date(2025, 9, 10), time(14, 0), time(15, 30)),
+            ScheduledEvent("Division-wide meeting with Angelica (small presentation)", date(2025, 9, 16), time(14, 0), time(15, 30)),
+            ScheduledEvent("Dad call?", date(2025, 9, 16), time(13, 0), time(14, 0)),
+            ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
+            ScheduledEvent("Mandy Jansen interview", date(2025, 9, 26), time(15, 0), time(16, 0)),
         ],
         "routines": [
              Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
@@ -194,68 +192,82 @@ if __name__ == "__main__":
              Routine("Trash (and recycling)", [0,3], start_time=time(17,30), end_time=time(18,0)),
         ],
         "tasks": [
-            Task("Contracts and MOUs for Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 5)),
             Task("slides to Angelica re: presentation", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
             Task("update slides for 16th and send to Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
-            Task("Continue work on Activity Advisor program", "Long-term project", total_hours=10),
-            Task("Boat stuff", "Long-term project", total_hours=1),
-            Task("Solve printer offline", "Long-term project"),
-            Task("Get RU-PSU football tickets", "Long-term project"),
-            Task("Send keynote video to mom", "Long-term project", total_hours=0.5),
-            Task("Boater endorsement on driver's license", "Long-term project"),
-            Task("Get UW safety alerts", "Long-term project"),
-            Task("Kurt - September plans", "Long-term project"),
-            Task("Pursue School 81/consult Angelica", "Long-term project"),
-            Task("Get back to Cameron", "Long-term project"),
-            Task("Follow up with Erik on Summer Science", "Long-term project"),
-            Task("Review AI overview from call", "Long-term project"),
-            Task("Prepare for Angelica performance review", "Long-term project"),
-            Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project"),
-            Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project"),
-            Task("email Angelica re School 81?", "Long-term project"),
-            Task("Call Spencer's PT", "Long-term project"),
-            Task("send mom and dad FB post from McNicholls", "Long-term project"),
-            Task("new reverse osmosis", "Long-term project"),
-            Task("Spencer's car", "Long-term project"),
-            Task("Elisa's birthday", "Long-term project"),
-            Task("September and October trip planning", "Long-term project"),
-            Task("sink backed up again", "Long-term project"),
-            Task("Ask Mitch about Dad call", "Long-term project"),
-            Task("Tech/AI Ed needs assessment", "Long-term project", importance=9),
-            Task("Project New Masters program", "Long-term project", importance=8),
-            Task("Do something with Autism-Makerspace data", "Long-term project"),
-            Task("register for Waterman?", "Long-term project"),
-            Task("Announce/organize happy hour on 16th", "Long-term project"),
-            Task("Behavioral sciences review - recommend Janice McDonnell", "Long-term project"),
-            Task("Matt: NJTEEA conference and session/table", "Long-term project"),
-            Task("Matt: NJTEEA marketing billing", "Long-term project"),
-            Task("Patty - Gilbert and it certificaton - student program — sponsor, credit, marketing, etc.", "Long-term project"),
-            Task("Gandhi", "Long-term project"),
-            Task("Ezra!", "Long-term project"),
-            Task("Talk to Rebecca Reynolds", "Long-term project"),
-            Task("Spencer: meal plan", "Long-term project"),
-            Task("Spencer: letter; write back?", "Long-term project"),
-            Task("DOE info for Chris Anderson", "Long-term project"),
-            Task("Call wine outlet for mom re credit card order", "Long-term project"),
-            Task("This weekend: make plans for Elisa's birthday and for Sept-Oct", "Long-term project"),
-            Task("Joel Cohen - mom's car", "Long-term project"),
+            Task("New Goal setting (email on 9/8 form SR VP Hum Resources)", "Assignment", total_hours=2, deadline=date(2025, 9, 30)),
+            Task("3 peaks deposit due Oct 1", "Assignment", total_hours=0.5, deadline=date(2025, 10, 1)),
+            Task("Gifts for Elisa", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
+            Task("Elisa's birthday", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
+            Task("Continue work on Activity Advisor program", "Long-term project", urgency=10, importance=9.5, enjoyment=9),
+            Task("Boat stuff", "Long-term project", urgency=7, importance=6, enjoyment=7),
+            Task("Send keynote video to mom", "Long-term project", urgency=3, importance=4, enjoyment=6),
+            Task("Boater endorsement on driver's license", "Long-term project", urgency=5, importance=5, enjoyment=2),
+            Task("Get UW safety alerts", "Long-term project", urgency=4, importance=4, enjoyment=1),
+            Task("Kurt - September plans", "Long-term project", urgency=8, importance=5, enjoyment=4),
+            Task("Pursue School 81/consult Angelica", "Long-term project", urgency=6, importance=8, enjoyment=2),
+            Task("Get back to Cameron", "Long-term project", urgency=4, importance=3, enjoyment=5),
+            Task("Follow up with Erik on Summer Science", "Long-term project", urgency=2, importance=4, enjoyment=7),
+            Task("Review AI overview from call", "Long-term project", urgency=3, importance=4, enjoyment=4),
+            Task("Prepare for Angelica performance review", "Long-term project", urgency=4, importance=8, enjoyment=3),
+            Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project", urgency=2, importance=2, enjoyment=4),
+            Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project", urgency=2, importance=3, enjoyment=7),
+            Task("email Angelica re School 81?", "Long-term project", urgency=4, importance=4, enjoyment=3),
+            Task("Call Spencer's PT", "Long-term project", urgency=5, importance=4, enjoyment=3),
+            Task("send mom and dad FB post from McNicholls", "Long-term project", urgency=2, importance=2, enjoyment=4),
+            Task("new reverse osmosis", "Long-term project", urgency=4, importance=4, enjoyment=1),
+            Task("Spencer's car", "Long-term project", urgency=3, importance=4, enjoyment=4),
+            Task("September and October trip planning", "Long-term project", urgency=7, importance=5, enjoyment=3),
+            Task("sink backed up again", "Long-term project", urgency=5, importance=5, enjoyment=1),
+            Task("Ask Mitch about Dad call", "Long-term project", urgency=8, importance=5, enjoyment=6),
+            Task("Announce/organize happy hour on 16th", "Long-term project", urgency=9, importance=5, enjoyment=3),
+            Task("Spencer meal plan", "Long-term project", urgency=1, importance=5, enjoyment=3),
+            Task("Tech/AI Ed needs assessment", "Long-term project", urgency=6, importance=8, enjoyment=5),
+            Task("Project New Masters program", "Long-term project", urgency=4, importance=8, enjoyment=4),
+            Task("Do something with Autism-Makerspace data", "Long-term project", urgency=3, importance=5, enjoyment=4),
+            Task("Host NJTEEA site visit", "Long-term project", urgency=5, importance=6, enjoyment=6),
+            Task("Yes tickets debacle", "Long-term project", urgency=8, importance=4, enjoyment=6),
+            Task("Colleen Costagan - check when scholarship will be applied", "Long-term project", urgency=9, importance=7, enjoyment=2),
+            Task("Boat!", "Long-term project", urgency=4, importance=3, enjoyment=8),
+            Task("Check Spencer's tuition balance around the 24th", "Long-term project", urgency=4, importance=3, enjoyment=2),
+            Task("Check w team re who does what on 16th - again", "Long-term project", urgency=9, importance=5, enjoyment=4),
+            Task("Give mentoring group fair warning canceling the 16th", "Long-term project", urgency=9, importance=4, enjoyment=3),
+            Task("Tweek slides for next Tues again for just Eddie and me", "Long-term project", urgency=9, importance=8, enjoyment=3),
+            Task("Colleen Costagan - check when scholarship will be applied - check hyunjo on Mon", "Long-term project", urgency=8, importance=6, enjoyment=2),
+            Task("Ray?", "Long-term project", urgency=3, importance=5, enjoyment=4),
+            Task("Matt email - reply, send to eddie, pay marketing fee", "Long-term project", urgency=5, importance=5, enjoyment=2),
+            Task("Gifts for Elisa", "Long-term project", urgency=9, importance=7, enjoyment=6),
+            Task("Matt: NJTEEA conference and session/table", "Long-term project", urgency=5, importance=4, enjoyment=3),
+            Task("Matt: NJTEEA marketing billing", "Long-term project", urgency=8, importance=5, enjoyment=2),
+            Task("Patty - Gilbert and it certificaton - student program — sponsor, credit, marketing, etc.", "Long-term project", urgency=6, importance=4, enjoyment=1),
+            Task("Gandhi", "Long-term project", urgency=8, importance=8, enjoyment=8),
+            Task("Ezra!", "Long-term project", urgency=7, importance=7, enjoyment=7),
+            Task("Talk to Rebecca Reynolds", "Long-term project", urgency=5, importance=5, enjoyment=5),
+            Task("Spencer: meal plan", "Long-term project", urgency=2, importance=5, enjoyment=5),
+            Task("Spencer: letter; write back?", "Long-term project", urgency=4, importance=8, enjoyment=8),
+            Task("Time with my mom", "Value", total_hours=2),
+            Task("Communicate with family and friends", "Value", total_hours=1),
             Task("Pillows", "Hobby"),
             Task("Wine shopping?", "Hobby"),
             Task("movies -- try Paul's rec", "Hobby", constraints={'preferred_days': [4,5], 'preferred_context': 'evening'}),
-            Task("Time with my mom", "Value", total_hours=2, constraints={'preferred_days': [4,5,6,0]}),
-            Task("Communicate with family and friends", "Value", total_hours=1),
         ]
     }
     
-    clark_profile = { # ... Clark's full data profile ...
+    clark_profile = {
+        "name": "Clark",
+        # ... (full data for Clark)
+    }
+
+    elisa_profile = {
+        "name": "Elisa",
+        # ... (full data for Elisa)
     }
     
-    user_profiles = {"david": david_profile, "clark": clark_profile}
-    active_user_id = "david" # <-- Set active user here
+    user_profiles = {"david": david_profile, "clark": clark_profile, "elisa": elisa_profile}
+    active_user_id = "david"
     
     active_user = user_profiles[active_user_id]
-    start_date = date(2025, 9, 6) # Set start date here
-    start_time_hour = active_user["settings"]["schedule_window"][0]
+    start_date = date(2025, 9, 10)
+    start_time_hour, _ = active_user["settings"]["schedule_window"]
     start_time = time(start_time_hour, 0)
     
     # Prioritization Engine
@@ -264,20 +276,17 @@ if __name__ == "__main__":
 
     for task in active_user["tasks"]:
         if task.status == 'active':
+            # This logic now correctly handles overrides vs defaults
             defaults = DEFAULTS.get(task.category, {})
-            task.importance = getattr(task, 'importance', 0) or defaults.get("I", 0)
-            task.enjoyment = getattr(task, 'enjoyment', 0) or defaults.get("E", 0)
+            task.urgency = task.urgency or defaults.get("U", 0)
+            task.importance = task.importance or defaults.get("I", 0)
+            task.enjoyment = task.enjoyment or defaults.get("E", 0)
             
             if task.category == "Assignment" and hasattr(task, 'deadline') and task.deadline:
-                if isinstance(task.deadline, datetime): deadline_date = task.deadline.date()
-                else: deadline_date = task.deadline
-                work_days_left = (deadline_date - start_date).days
+                work_days_left = (task.deadline - start_date).days
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left
-                urgency_add = 5 if active_user_id == "david" else 0
-                task.urgency = required_pace + urgency_add
-            else:
-                task.urgency = getattr(task, 'urgency', 0) or defaults.get("U", 0)
+                task.urgency = required_pace + 5
             
             numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
             denominator = sum(WEIGHTS.values());
