@@ -13,7 +13,7 @@ class ScheduledEvent:
         self.end_time = end_time
 
 class Task:
-    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, constraints=None):
+    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, constraints=None, status='active', source_event=None):
         self.name = name
         self.category = category
         self.urgency = urgency
@@ -22,7 +22,8 @@ class Task:
         self.total_hours = total_hours
         self.deadline = deadline
         self.priority_score = 0
-        self.status = 'active'
+        self.status = status
+        self.source_event = source_event
         self.constraints = constraints or {}
 
 class Routine:
@@ -198,6 +199,7 @@ if __name__ == "__main__":
             Task("3 peaks deposit due Oct 1", "Assignment", total_hours=0.5, deadline=date(2025, 10, 1)),
             Task("Gifts for Elisa", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
             Task("Elisa's birthday", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
+            Task("triathlon training", "Assignment", total_hours=3, deadline=date(2025, 9, 7)),
             Task("Continue work on Activity Advisor program", "Long-term project", urgency=10, importance=9.5, enjoyment=9),
             Task("Boat stuff", "Long-term project", urgency=7, importance=6, enjoyment=7),
             Task("Send keynote video to mom", "Long-term project", urgency=3, importance=4, enjoyment=6),
@@ -276,8 +278,8 @@ if __name__ == "__main__":
 
     for task in active_user["tasks"]:
         if task.status == 'active':
-            # This logic now correctly handles overrides vs defaults
             defaults = DEFAULTS.get(task.category, {})
+            # Use specific task rating if available, otherwise use default
             task.urgency = task.urgency or defaults.get("U", 0)
             task.importance = task.importance or defaults.get("I", 0)
             task.enjoyment = task.enjoyment or defaults.get("E", 0)
