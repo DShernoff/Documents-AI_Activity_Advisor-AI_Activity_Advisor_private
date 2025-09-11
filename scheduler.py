@@ -1,3 +1,4 @@
+### **The Definitive Python Script (v10.1.1)
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -294,11 +295,13 @@ if __name__ == "__main__":
     }
     
     clark_profile = {
-        # ... (full, correct data profile for Clark)
+        "name": "Clark",
+        # ... (full data for Clark)
     }
 
     elisa_profile = {
-        # ... (full, correct data profile for Elisa)
+        "name": "Elisa",
+        # ... (full data for Elisa)
     }
     
     user_profiles = {"david": david_profile, "clark": clark_profile, "elisa": elisa_profile}
@@ -352,7 +355,7 @@ if __name__ == "__main__":
             end_str = end_time.strftime('%I:%M %p')
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
-    
+
     # --- AI Training Mode Simulation ---
     print("\n\n=============================================")
     print("--- AI TRAINING MODE SIMULATION ---")
