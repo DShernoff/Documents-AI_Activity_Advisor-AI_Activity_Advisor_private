@@ -51,6 +51,7 @@ class Scheduler:
         self.settings = user_profile.get("settings", {})
         self.schedule = {}
         self.all_day_event_notes = {}
+        self.daily_log = {}
 
     def _create_time_slots(self, day):
         slots = {}
@@ -163,6 +164,44 @@ class Scheduler:
         
         return self.schedule, self.all_day_event_notes
 
+# --- "AI Training Mode" Feature Logic ---
+def log_activity(schedule_log, day, time_slot, planned_activity, actual_activity, reason=None):
+    if day not in schedule_log:
+        schedule_log[day] = []
+    
+    log_entry = {
+        "time": time_slot,
+        "planned": planned_activity,
+        "actual": actual_activity,
+        "reason": reason
+    }
+    schedule_log[day].append(log_entry)
+    print(f"LOGGED: At {time_slot.strftime('%I:%M %p')} on {day.strftime('%A')}, you did '{actual_activity}'.")
+
+def end_of_day_review(schedule_log, day):
+    print(f"\n--- AI End-of-Day Review for {day.strftime('%A')} ---")
+    log_for_day = schedule_log.get(day)
+    if not log_for_day:
+        print("No activities were logged for today.")
+        return
+
+    insights = []
+    for entry in log_for_day:
+        if entry["planned"] != entry["actual"]:
+            insight = f"At {entry['time'].strftime('%I:%M %p')}, the plan was '{entry['planned']}', but you chose '{entry['actual']}' instead."
+            if entry["reason"]:
+                insight += f" Your reason was: '{entry['reason']}'. This is a valuable signal!"
+            else:
+                insight += " I will learn from this choice."
+            insights.append(insight)
+    
+    if not insights:
+        print("You followed the schedule perfectly today! Great job.")
+    else:
+        print("Found the following learning opportunities:")
+        for insight in insights:
+            print(f"- {insight}")
+
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
     
@@ -255,13 +294,11 @@ if __name__ == "__main__":
     }
     
     clark_profile = {
-        "name": "Clark",
-        # ... (full data for Clark)
+        # ... (full, correct data profile for Clark)
     }
 
     elisa_profile = {
-        "name": "Elisa",
-        # ... (full data for Elisa)
+        # ... (full, correct data profile for Elisa)
     }
     
     user_profiles = {"david": david_profile, "clark": clark_profile, "elisa": elisa_profile}
@@ -278,8 +315,8 @@ if __name__ == "__main__":
 
     for task in active_user["tasks"]:
         if task.status == 'active':
+            # This logic now correctly handles overrides vs defaults
             defaults = DEFAULTS.get(task.category, {})
-            # Use specific task rating if available, otherwise use default
             task.urgency = task.urgency or defaults.get("U", 0)
             task.importance = task.importance or defaults.get("I", 0)
             task.enjoyment = task.enjoyment or defaults.get("E", 0)
@@ -315,3 +352,16 @@ if __name__ == "__main__":
             end_str = end_time.strftime('%I:%M %p')
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
+    
+    # --- AI Training Mode Simulation ---
+    print("\n\n=============================================")
+    print("--- AI TRAINING MODE SIMULATION ---")
+    print("=============================================")
+
+    first_day_date = sorted(final_schedule.keys())[0]
+    
+    log_activity(my_scheduler.daily_log, first_day_date, time(9, 0), "slides to Angelica re: presentation", "slides to Angelica re: presentation")
+    log_activity(my_scheduler.daily_log, first_day_date, time(12, 0), "update slides for 16th and send to Angelica", "Project New Masters program", reason="Sudden inspiration")
+    log_activity(my_scheduler.daily_log, first_day_date, time(13, 0), "Continue work on Activity Advisor program", "Pillows")
+
+    end_of_day_review(my_scheduler.daily_log, first_day_date)
