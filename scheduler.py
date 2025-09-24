@@ -1,4 +1,5 @@
-### **The Definitive Python Script (v10.1.1)
+### **The Current Python Script (Brain v9.5)**
+
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -14,7 +15,7 @@ class ScheduledEvent:
         self.end_time = end_time
 
 class Task:
-    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, constraints=None, status='active', source_event=None):
+    def __init__(self, name, category, urgency=0, importance=0, enjoyment=0, total_hours=1, deadline=None, constraints=None, status='active'):
         self.name = name
         self.category = category
         self.urgency = urgency
@@ -24,7 +25,6 @@ class Task:
         self.deadline = deadline
         self.priority_score = 0
         self.status = status
-        self.source_event = source_event
         self.constraints = constraints or {}
 
 class Routine:
@@ -52,7 +52,6 @@ class Scheduler:
         self.settings = user_profile.get("settings", {})
         self.schedule = {}
         self.all_day_event_notes = {}
-        self.daily_log = {}
 
     def _create_time_slots(self, day):
         slots = {}
@@ -104,6 +103,9 @@ class Scheduler:
             for routine in static_routines:
                 is_today = (routine.days_of_week and day.weekday() in routine.days_of_week)
                 if is_today:
+                    # Override check
+                    if any(event.start_time < routine.end_time and event.end_time > routine.start_time for event in self.scheduled_events if event.date == day and event.start_time):
+                        continue
                     for slot_time in slots:
                         if routine.start_time and routine.start_time <= slot_time < routine.end_time: slots[slot_time] = f"ROUTINE: {routine.name}"
         
@@ -112,10 +114,8 @@ class Scheduler:
         for day, slots in self.schedule.items():
             for routine in flexible_routines:
                 if routine.days_of_week and day.weekday() in routine.days_of_week:
-                    if routine.name.lower() == 'exercise' and any("gym" in str(v) or "walk" in str(v) or "spin" in str(v) or "triathlon" in str(v) for v in slots.values()):
+                    if routine.name.lower() == 'exercise' and any("triathlon" in str(v) for v in slots.values()):
                         continue
-                    if 'not_after' in routine.constraints and any(slot_time >= routine.constraints['not_after'] for slot_time, activity in slots.items() if activity is None):
-                        pass
                     chunks_needed = math.ceil(routine.total_hours * 2)
                     for slot_start_time in sorted(slots.keys()):
                         if 'not_after' in routine.constraints and slot_start_time >= routine.constraints['not_after']:
@@ -165,44 +165,6 @@ class Scheduler:
         
         return self.schedule, self.all_day_event_notes
 
-# --- "AI Training Mode" Feature Logic ---
-def log_activity(schedule_log, day, time_slot, planned_activity, actual_activity, reason=None):
-    if day not in schedule_log:
-        schedule_log[day] = []
-    
-    log_entry = {
-        "time": time_slot,
-        "planned": planned_activity,
-        "actual": actual_activity,
-        "reason": reason
-    }
-    schedule_log[day].append(log_entry)
-    print(f"LOGGED: At {time_slot.strftime('%I:%M %p')} on {day.strftime('%A')}, you did '{actual_activity}'.")
-
-def end_of_day_review(schedule_log, day):
-    print(f"\n--- AI End-of-Day Review for {day.strftime('%A')} ---")
-    log_for_day = schedule_log.get(day)
-    if not log_for_day:
-        print("No activities were logged for today.")
-        return
-
-    insights = []
-    for entry in log_for_day:
-        if entry["planned"] != entry["actual"]:
-            insight = f"At {entry['time'].strftime('%I:%M %p')}, the plan was '{entry['planned']}', but you chose '{entry['actual']}' instead."
-            if entry["reason"]:
-                insight += f" Your reason was: '{entry['reason']}'. This is a valuable signal!"
-            else:
-                insight += " I will learn from this choice."
-            insights.append(insight)
-    
-    if not insights:
-        print("You followed the schedule perfectly today! Great job.")
-    else:
-        print("Found the following learning opportunities:")
-        for insight in insights:
-            print(f"- {insight}")
-
 # --- 3. The "Main" Block ---
 if __name__ == "__main__":
     
@@ -223,6 +185,10 @@ if __name__ == "__main__":
             ScheduledEvent("Dad call?", date(2025, 9, 16), time(13, 0), time(14, 0)),
             ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
             ScheduledEvent("Mandy Jansen interview", date(2025, 9, 26), time(15, 0), time(16, 0)),
+            ScheduledEvent("Chris follow up", date(2025, 9, 12), time(14, 0), time(14, 45)),
+            ScheduledEvent("Janine", date(2025, 9, 15), time(11, 0), time(12, 0)),
+            ScheduledEvent("Meeting with Gil", date(2025, 9, 19), time(13, 0), time(13, 30)),
+            ScheduledEvent("RUYES meeting", date(2025, 9, 23), time(13, 0), time(14, 0)),
         ],
         "routines": [
              Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
@@ -233,13 +199,11 @@ if __name__ == "__main__":
              Routine("Trash (and recycling)", [0,3], start_time=time(17,30), end_time=time(18,0)),
         ],
         "tasks": [
-            Task("slides to Angelica re: presentation", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
-            Task("update slides for 16th and send to Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
-            Task("New Goal setting (email on 9/8 form SR VP Hum Resources)", "Assignment", total_hours=2, deadline=date(2025, 9, 30)),
             Task("3 peaks deposit due Oct 1", "Assignment", total_hours=0.5, deadline=date(2025, 10, 1)),
-            Task("Gifts for Elisa", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
-            Task("Elisa's birthday", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
-            Task("triathlon training", "Assignment", total_hours=3, deadline=date(2025, 9, 7)),
+            Task("University ethics course", "Assignment", total_hours=2, deadline=date(2025, 12, 30)),
+            Task("Amanda homework", "Assignment", total_hours=2, deadline=date(2025, 9, 26)),
+            Task("make bracelet", "Assignment", total_hours=2, deadline=date(2025, 9, 19)),
+            Task("write card", "Assignment", total_hours=0.5, deadline=date(2025, 9, 19)),
             Task("Continue work on Activity Advisor program", "Long-term project", urgency=10, importance=9.5, enjoyment=9),
             Task("Boat stuff", "Long-term project", urgency=7, importance=6, enjoyment=7),
             Task("Send keynote video to mom", "Long-term project", urgency=3, importance=4, enjoyment=6),
@@ -259,11 +223,10 @@ if __name__ == "__main__":
             Task("new reverse osmosis", "Long-term project", urgency=4, importance=4, enjoyment=1),
             Task("Spencer's car", "Long-term project", urgency=3, importance=4, enjoyment=4),
             Task("September and October trip planning", "Long-term project", urgency=7, importance=5, enjoyment=3),
-            Task("sink backed up again", "Long-term project", urgency=5, importance=5, enjoyment=1),
             Task("Ask Mitch about Dad call", "Long-term project", urgency=8, importance=5, enjoyment=6),
             Task("Announce/organize happy hour on 16th", "Long-term project", urgency=9, importance=5, enjoyment=3),
             Task("Spencer meal plan", "Long-term project", urgency=1, importance=5, enjoyment=3),
-            Task("Tech/AI Ed needs assessment", "Long-term project", urgency=6, importance=8, enjoyment=5),
+            Task("Tech/AI Ed needs assessment", "Long-term project", urgency=6, importance=9, enjoyment=5),
             Task("Project New Masters program", "Long-term project", urgency=4, importance=8, enjoyment=4),
             Task("Do something with Autism-Makerspace data", "Long-term project", urgency=3, importance=5, enjoyment=4),
             Task("Host NJTEEA site visit", "Long-term project", urgency=5, importance=6, enjoyment=6),
@@ -271,21 +234,23 @@ if __name__ == "__main__":
             Task("Colleen Costagan - check when scholarship will be applied", "Long-term project", urgency=9, importance=7, enjoyment=2),
             Task("Boat!", "Long-term project", urgency=4, importance=3, enjoyment=8),
             Task("Check Spencer's tuition balance around the 24th", "Long-term project", urgency=4, importance=3, enjoyment=2),
-            Task("Check w team re who does what on 16th - again", "Long-term project", urgency=9, importance=5, enjoyment=4),
             Task("Give mentoring group fair warning canceling the 16th", "Long-term project", urgency=9, importance=4, enjoyment=3),
-            Task("Tweek slides for next Tues again for just Eddie and me", "Long-term project", urgency=9, importance=8, enjoyment=3),
             Task("Colleen Costagan - check when scholarship will be applied - check hyunjo on Mon", "Long-term project", urgency=8, importance=6, enjoyment=2),
             Task("Ray?", "Long-term project", urgency=3, importance=5, enjoyment=4),
-            Task("Matt email - reply, send to eddie, pay marketing fee", "Long-term project", urgency=5, importance=5, enjoyment=2),
             Task("Gifts for Elisa", "Long-term project", urgency=9, importance=7, enjoyment=6),
             Task("Matt: NJTEEA conference and session/table", "Long-term project", urgency=5, importance=4, enjoyment=3),
             Task("Matt: NJTEEA marketing billing", "Long-term project", urgency=8, importance=5, enjoyment=2),
-            Task("Patty - Gilbert and it certificaton - student program — sponsor, credit, marketing, etc.", "Long-term project", urgency=6, importance=4, enjoyment=1),
             Task("Gandhi", "Long-term project", urgency=8, importance=8, enjoyment=8),
             Task("Ezra!", "Long-term project", urgency=7, importance=7, enjoyment=7),
             Task("Talk to Rebecca Reynolds", "Long-term project", urgency=5, importance=5, enjoyment=5),
             Task("Spencer: meal plan", "Long-term project", urgency=2, importance=5, enjoyment=5),
             Task("Spencer: letter; write back?", "Long-term project", urgency=4, importance=8, enjoyment=8),
+            Task("Get pinot noir", "Long-term project", urgency=2, importance=4, enjoyment=6),
+            Task("Ask Barbara Rusen about undergraduate credits", "Long-term project", urgency=5, importance=7, enjoyment=4),
+            Task("Add 'why this now?' button in app interface", "Long-term project", urgency=5, importance=7, enjoyment=6),
+            Task("Get/take in dry cleaning", "Long-term project", urgency=5, importance=7, enjoyment=2),
+            Task("Work study student form", "Long-term project", urgency=9, importance=9, enjoyment=3),
+            Task("Get RU-PSU football tickets", "Long-term project", urgency=7, importance=9, enjoyment=5),
             Task("Time with my mom", "Value", total_hours=2),
             Task("Communicate with family and friends", "Value", total_hours=1),
             Task("Pillows", "Hobby"),
@@ -294,21 +259,16 @@ if __name__ == "__main__":
         ]
     }
     
-    clark_profile = {
-        "name": "Clark",
-        # ... (full data for Clark)
+    clark_profile = { # ... Clark's full data profile ...
     }
-
-    elisa_profile = {
-        "name": "Elisa",
-        # ... (full data for Elisa)
+    elisa_profile = { # ... Elisa's full data profile ...
     }
     
     user_profiles = {"david": david_profile, "clark": clark_profile, "elisa": elisa_profile}
     active_user_id = "david"
     
     active_user = user_profiles[active_user_id]
-    start_date = date(2025, 9, 10)
+    start_date = date(2025, 9, 23)
     start_time_hour, _ = active_user["settings"]["schedule_window"]
     start_time = time(start_time_hour, 0)
     
@@ -318,7 +278,6 @@ if __name__ == "__main__":
 
     for task in active_user["tasks"]:
         if task.status == 'active':
-            # This logic now correctly handles overrides vs defaults
             defaults = DEFAULTS.get(task.category, {})
             task.urgency = task.urgency or defaults.get("U", 0)
             task.importance = task.importance or defaults.get("I", 0)
@@ -355,16 +314,3 @@ if __name__ == "__main__":
             end_str = end_time.strftime('%I:%M %p')
             print(f"{start_str} - {end_str}: {activity}")
             i = j + 1
-
-    # --- AI Training Mode Simulation ---
-    print("\n\n=============================================")
-    print("--- AI TRAINING MODE SIMULATION ---")
-    print("=============================================")
-
-    first_day_date = sorted(final_schedule.keys())[0]
-    
-    log_activity(my_scheduler.daily_log, first_day_date, time(9, 0), "slides to Angelica re: presentation", "slides to Angelica re: presentation")
-    log_activity(my_scheduler.daily_log, first_day_date, time(12, 0), "update slides for 16th and send to Angelica", "Project New Masters program", reason="Sudden inspiration")
-    log_activity(my_scheduler.daily_log, first_day_date, time(13, 0), "Continue work on Activity Advisor program", "Pillows")
-
-    end_of_day_review(my_scheduler.daily_log, first_day_date)
