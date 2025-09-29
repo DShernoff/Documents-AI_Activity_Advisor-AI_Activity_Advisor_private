@@ -1,5 +1,4 @@
-
-### **The Definitive and Correct Python Script (v11.1 - Master)**```python
+### **The Definitive Python Script (Brain v13.0)**```python
 # Import necessary libraries
 from datetime import time, timedelta, date, datetime
 import math
@@ -27,6 +26,7 @@ class Task:
         self.status = status
         self.source_event = source_event
         self.constraints = constraints or {}
+        self.rationale = "" # For the "Why this now?" feature
 
 class Routine:
     def __init__(self, name, days_of_week=None, day_of_month=None, start_time=None, end_time=None, total_hours=0, constraints=None):
@@ -166,11 +166,39 @@ class Scheduler:
         
         return self.schedule, self.all_day_event_notes
 
-# --- "AI Training Mode" Feature Logic ---
-def log_activity(schedule_log, day, time_slot, planned_activity, actual_activity, reason=None):
-    if day not in schedule_log:
-        schedule_log[day] = []
+# --- "Rationale Engine" & "Training Mode" Logic ---
+def generate_rationale(task, a_user_profile):
+    weights = a_user_profile["settings"]["WEIGHTS"]
+    score_string = f"This is one of your high-priority tasks with a score of **{task.priority_score:.2f}**."
     
+    urg_score = task.urgency * weights["U"]
+    imp_score = task.importance * weights["I"]
+    enj_score = task.enjoyment * weights["E"]
+    max_score = max(urg_score, imp_score, enj_score)
+    
+    primary_driver = ""
+    if max_score == urg_score and task.urgency > 0:
+        if task.category == "Assignment" and task.deadline:
+            primary_driver = f"Its priority is driven by its upcoming **{task.deadline.strftime('%B %d')} deadline**, making it highly urgent."
+        else:
+            primary_driver = f"Its priority is driven by its high **Urgency** rating."
+    elif max_score == imp_score:
+        primary_driver = f"Its priority is driven by its high **Importance** rating, aligning with your key goals."
+    else:
+        primary_driver = f"Its priority is driven by its high **Enjoyment** rating, making it a great choice for this time."
+
+    conclusion = ""
+    if task.category == "Hobby" and enj_score > (urg_score + imp_score):
+         conclusion = "Taking a break for a hobby you love is a great way to recharge your creative energy."
+    elif task.category == "Assignment":
+         conclusion = "Scheduling it now ensures you make steady progress and avoid a last-minute rush."
+    
+    final_rationale = f"{score_string}\n- {primary_driver}\n- {conclusion}"
+    task.rationale = final_rationale
+    return final_rationale
+
+def log_activity(schedule_log, day, time_slot, planned_activity, actual_activity, reason=None):
+    if day not in schedule_log: schedule_log[day] = []
     log_entry = { "time": time_slot, "planned": planned_activity, "actual": actual_activity, "reason": reason }
     schedule_log[day].append(log_entry)
     print(f"LOGGED: At {time_slot.strftime('%I:%M %p')} on {day.strftime('%A')}, you did '{actual_activity}'.")
@@ -178,9 +206,7 @@ def log_activity(schedule_log, day, time_slot, planned_activity, actual_activity
 def end_of_day_review(schedule_log, day):
     print(f"\n--- AI End-of-Day Review for {day.strftime('%A')} ---")
     log_for_day = schedule_log.get(day)
-    if not log_for_day:
-        print("No activities were logged for today."); return
-
+    if not log_for_day: print("No activities were logged for today."); return
     insights = []
     for entry in log_for_day:
         if entry["planned"] != entry["actual"]:
@@ -188,7 +214,6 @@ def end_of_day_review(schedule_log, day):
             if entry["reason"]: insight += f" Your reason was: '{entry['reason']}'. This is a valuable signal!"
             else: insight += " I will learn from this choice."
             insights.append(insight)
-    
     if not insights: print("You followed the schedule perfectly today! Great job.")
     else:
         print("Found the following learning opportunities:")
@@ -214,15 +239,6 @@ if __name__ == "__main__":
             ScheduledEvent("Dad call?", date(2025, 9, 16), time(13, 0), time(14, 0)),
             ScheduledEvent("Performance review - Angelica", date(2025, 9, 18), time(11, 0), time(12, 0)),
             ScheduledEvent("Mandy Jansen interview", date(2025, 9, 26), time(15, 0), time(16, 0)),
-            ScheduledEvent("Chris follow up", date(2025, 9, 12), time(14, 0), time(14, 45)),
-            ScheduledEvent("Janine", date(2025, 9, 15), time(11, 0), time(12, 0)),
-            ScheduledEvent("Meeting with Gil", date(2025, 9, 19), time(13, 0), time(13, 30)),
-            ScheduledEvent("RUYES meeting", date(2025, 9, 23), time(13, 0), time(14, 0)),
-            ScheduledEvent("Mom birthday dinner for Elisa", date(2025, 9, 23), time(17, 0), time(20, 0)),
-            ScheduledEvent("Waterman Triathlon", date(2025, 9, 27), time(14, 0), time(21, 0)),
-            ScheduledEvent("Waterman Triathlon", date(2025, 9, 28), None, None),
-            ScheduledEvent("Remind Angelica about goal setting", date(2025, 9, 29), None, None),
-            ScheduledEvent("Deadline for goal setting", date(2025, 9, 30), None, None),
         ],
         "routines": [
              Routine("Dinner", [0,1,2,3,4,5,6], start_time=time(18,0), end_time=time(19,30)),
@@ -233,12 +249,16 @@ if __name__ == "__main__":
              Routine("Trash (and recycling)", [0,3], start_time=time(17,30), end_time=time(18,0)),
         ],
         "tasks": [
+            Task("slides to Angelica re: presentation", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
+            Task("update slides for 16th and send to Angelica", "Assignment", total_hours=2, deadline=date(2025, 9, 11)),
             Task("New Goal setting (email on 9/8 form SR VP Hum Resources)", "Assignment", total_hours=2, deadline=date(2025, 9, 30)),
             Task("3 peaks deposit due Oct 1", "Assignment", total_hours=0.5, deadline=date(2025, 10, 1)),
-            Task("University ethics course", "Assignment", total_hours=2, deadline=date(2025, 12, 30)),
-            Task("Amanda homework", "Assignment", total_hours=2, deadline=date(2025, 9, 26)),
-            Task("write card", "Assignment", total_hours=0.5, deadline=date(2025, 9, 19)),
+            Task("Gifts for Elisa", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
+            Task("Elisa's birthday", "Assignment", total_hours=2, deadline=date(2025, 9, 20)),
+            Task("triathlon training", "Assignment", total_hours=3, deadline=date(2025, 9, 7)),
             Task("Continue work on Activity Advisor program", "Long-term project", urgency=10, importance=9.5, enjoyment=9),
+            Task("Boat stuff", "Long-term project", urgency=7, importance=6, enjoyment=7),
+            Task("Send keynote video to mom", "Long-term project", urgency=3, importance=4, enjoyment=6),
             Task("Boater endorsement on driver's license", "Long-term project", urgency=5, importance=5, enjoyment=2),
             Task("Get UW safety alerts", "Long-term project", urgency=4, importance=4, enjoyment=1),
             Task("Kurt - September plans", "Long-term project", urgency=8, importance=5, enjoyment=4),
@@ -249,37 +269,39 @@ if __name__ == "__main__":
             Task("Prepare for Angelica performance review", "Long-term project", urgency=4, importance=8, enjoyment=3),
             Task("Eddie email - maker / special ed redesign UD, AI", "Long-term project", urgency=2, importance=2, enjoyment=4),
             Task("Send around Educator's Guide to STEAM 2ed review", "Long-term project", urgency=2, importance=3, enjoyment=7),
+            Task("email Angelica re School 81?", "Long-term project", urgency=4, importance=4, enjoyment=3),
             Task("Call Spencer's PT", "Long-term project", urgency=5, importance=4, enjoyment=3),
             Task("send mom and dad FB post from McNicholls", "Long-term project", urgency=2, importance=2, enjoyment=4),
             Task("new reverse osmosis", "Long-term project", urgency=4, importance=4, enjoyment=1),
             Task("Spencer's car", "Long-term project", urgency=3, importance=4, enjoyment=4),
             Task("September and October trip planning", "Long-term project", urgency=7, importance=5, enjoyment=3),
+            Task("sink backed up again", "Long-term project", urgency=5, importance=5, enjoyment=1),
             Task("Ask Mitch about Dad call", "Long-term project", urgency=8, importance=5, enjoyment=6),
+            Task("Announce/organize happy hour on 16th", "Long-term project", urgency=9, importance=5, enjoyment=3),
             Task("Spencer meal plan", "Long-term project", urgency=1, importance=5, enjoyment=3),
             Task("Tech/AI Ed needs assessment", "Long-term project", urgency=6, importance=8, enjoyment=5),
             Task("Project New Masters program", "Long-term project", urgency=4, importance=8, enjoyment=4),
             Task("Do something with Autism-Makerspace data", "Long-term project", urgency=3, importance=5, enjoyment=4),
             Task("Host NJTEEA site visit", "Long-term project", urgency=5, importance=6, enjoyment=6),
             Task("Yes tickets debacle", "Long-term project", urgency=8, importance=4, enjoyment=6),
+            Task("Colleen Costagan - check when scholarship will be applied", "Long-term project", urgency=9, importance=7, enjoyment=2),
             Task("Boat!", "Long-term project", urgency=4, importance=3, enjoyment=8),
             Task("Check Spencer's tuition balance around the 24th", "Long-term project", urgency=4, importance=3, enjoyment=2),
+            Task("Check w team re who does what on 16th - again", "Long-term project", urgency=9, importance=5, enjoyment=4),
+            Task("Give mentoring group fair warning canceling the 16th", "Long-term project", urgency=9, importance=4, enjoyment=3),
+            Task("Tweek slides for next Tues again for just Eddie and me", "Long-term project", urgency=9, importance=8, enjoyment=3),
+            Task("Colleen Costagan - check when scholarship will be applied - check hyunjo on Mon", "Long-term project", urgency=8, importance=6, enjoyment=2),
             Task("Ray?", "Long-term project", urgency=3, importance=5, enjoyment=4),
             Task("Matt email - reply, send to eddie, pay marketing fee", "Long-term project", urgency=5, importance=5, enjoyment=2),
             Task("Gifts for Elisa", "Long-term project", urgency=9, importance=7, enjoyment=6),
             Task("Matt: NJTEEA conference and session/table", "Long-term project", urgency=5, importance=4, enjoyment=3),
+            Task("Matt: NJTEEA marketing billing", "Long-term project", urgency=8, importance=5, enjoyment=2),
+            Task("Patty - Gilbert and it certificaton - student program — sponsor, credit, marketing, etc.", "Long-term project", urgency=6, importance=4, enjoyment=1),
             Task("Gandhi", "Long-term project", urgency=8, importance=8, enjoyment=8),
             Task("Ezra!", "Long-term project", urgency=7, importance=7, enjoyment=7),
             Task("Talk to Rebecca Reynolds", "Long-term project", urgency=5, importance=5, enjoyment=5),
             Task("Spencer: meal plan", "Long-term project", urgency=2, importance=5, enjoyment=5),
             Task("Spencer: letter; write back?", "Long-term project", urgency=4, importance=8, enjoyment=8),
-            Task("Get pinot noir", "Long-term project", urgency=2, importance=4, enjoyment=6),
-            Task("Ask Barbara Rusen about undergraduate credits", "Long-term project", urgency=5, importance=7, enjoyment=4),
-            Task("Add 'why this now?' button in app interface", "Long-term project", urgency=5, importance=7, enjoyment=6),
-            Task("Get/take in dry cleaning", "Long-term project", urgency=5, importance=7, enjoyment=2),
-            Task("Work study student form", "Long-term project", urgency=9, importance=9, enjoyment=3),
-            Task("Get RU-PSU football tickets", "Long-term project", urgency=7, importance=9, enjoyment=5),
-            Task("Follow up with John (and ask about blower)", "Long-term project", urgency=6, importance=4, enjoyment=2),
-            Task("swap out gas can", "Long-term project", urgency=6, importance=4, enjoyment=1),
             Task("Time with my mom", "Value", total_hours=2),
             Task("Communicate with family and friends", "Value", total_hours=1),
             Task("Pillows", "Hobby"),
@@ -289,10 +311,12 @@ if __name__ == "__main__":
     }
     
     clark_profile = {
+        "name": "Clark",
         # ... (full, correct data profile for Clark)
     }
 
     elisa_profile = {
+        "name": "Elisa",
         # ... (full, correct data profile for Elisa)
     }
     
@@ -300,7 +324,7 @@ if __name__ == "__main__":
     active_user_id = "david"
     
     active_user = user_profiles[active_user_id]
-    start_date = date(2025, 9, 24)
+    start_date = date(2025, 9, 10)
     start_time_hour, _ = active_user["settings"]["schedule_window"]
     start_time = time(start_time_hour, 0)
     
@@ -310,20 +334,34 @@ if __name__ == "__main__":
 
     for task in active_user["tasks"]:
         if task.status == 'active':
+            # This logic now correctly handles overrides vs defaults
             defaults = DEFAULTS.get(task.category, {})
             task.urgency = task.urgency or defaults.get("U", 0)
             task.importance = task.importance or defaults.get("I", 0)
             task.enjoyment = task.enjoyment or defaults.get("E", 0)
             
-            if task.category == "Assignment" and hasattr(task, 'deadline') and task.deadline:
+             # --- UPGRADED: Universal Temporal Urgency Logic ---
+            if hasattr(task, 'deadline') and task.deadline:
+                # This logic now applies to ANY task with a deadline
                 work_days_left = (task.deadline - start_date).days
                 if work_days_left < 1: work_days_left = 1
                 required_pace = task.total_hours / work_days_left
-                task.urgency = required_pace + 5
+        
+        # The +5 modifier is specific to David's Assignments
+        urgency_add = 0
+        if active_user_id == "david" and task.category == "Assignment":
+            urgency_add = 5
             
-            numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
-            denominator = sum(WEIGHTS.values());
-            task.priority_score = numerator / denominator
+        task.urgency = required_pace + urgency_add
+    else:
+        # This is for tasks without a deadline
+        task.urgency = task.urgency or defaults.get("U", 0)
+            
+        numerator = (task.urgency * WEIGHTS["U"]) + (task.importance * WEIGHTS["I"]) + (task.enjoyment * WEIGHTS["E"])
+        denominator = sum(WEIGHTS.values());
+        task.priority_score = numerator / denominator
+            
+        generate_rationale(task, active_user)
             
     my_scheduler = Scheduler(start_date, start_time, 7, active_user)
     final_schedule, all_day_notes = my_scheduler.generate_schedule()
@@ -352,8 +390,32 @@ if __name__ == "__main__":
     print("--- AI TRAINING MODE SIMULATION ---")
     print("=============================================")
 
-    # This is a placeholder simulation and may not reflect the actual generated schedule above
-    first_day_date = date(2025, 9, 24)
-    log_activity(my_scheduler.daily_log, first_day_date, time(15, 0), "Continue work on Activity Advisor program", "Project New Masters program", reason="Sudden inspiration")
+    first_day_date = sorted(final_schedule.keys())[0]
+    
+    log_activity(my_scheduler.daily_log, first_day_date, time(9, 0), "slides to Angelica re: presentation", "slides to Angelica re: presentation")
+    log_activity(my_scheduler.daily_log, first_day_date, time(12, 0), "update slides for 16th and send to Angelica", "Project New Masters program", reason="Sudden inspiration")
+    log_activity(my_scheduler.daily_log, first_day_date, time(13, 0), "Continue work on Activity Advisor program", "Pillows")
 
     end_of_day_review(my_scheduler.daily_log, first_day_date)
+    
+     # --- NEW: "Why This Now?" Rationale Simulation ---
+    print("\n\n=============================================")
+    print("--- 'WHY THIS NOW?' RATIONALE SIMULATION ---")
+    print("=============================================")
+
+    # Find a specific task in the schedule to test
+    # Let's find the 'Pack' task from today's schedule
+    today_date = start_date
+    task_to_test = None
+    for task in active_user["tasks"]:
+        if "Continue work on Activity Advisor program" in task.name:
+            task_to_test = task
+            break
+
+    if task_to_test:
+        print(f"You asked for the rationale for the task: '{task_to_test.name}'")
+        print("--------------------------------------------------")
+        # The rationale was already generated and stored when we calculated priorities
+        print(task_to_test.rationale)
+    else:
+        print("Could not find the 'Pack' task to test the rationale.")
